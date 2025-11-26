@@ -116,6 +116,16 @@ data class VerifiableCredentialSdJwt(
      */
     @SerialName("cnf")
     val confirmationClaim: ConfirmationClaim? = null,
+
+    /**
+     * CUSTOM/NON-STANDARD. A list of embedded disclosure policies.
+     * This claim is an application-specific extension and is not defined in the IETF SD-JWT VC specification.
+     * Each policy in the list grants a specific relying party (verifier) the right to request a defined
+     * subset of the credential's claims, specified as a DCQL query. This enables fine-grained,
+     * verifier-specific authorization rules to be embedded directly within the credential.
+     */
+    @SerialName("dcp")
+    val disclosurePolicies: List<DisclosurePolicy>? = null,
 ) {
 
     /**
