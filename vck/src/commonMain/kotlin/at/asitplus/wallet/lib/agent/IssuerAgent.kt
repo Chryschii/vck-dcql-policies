@@ -149,6 +149,7 @@ class IssuerAgent(
             credentialStatus = credentialStatus,
             credentialSubject = credential.subject,
             credentialType = credential.scheme.vcType!!,
+            disclosurePolicies = credential.disclosurePolicies
         )
 
         val vcInJws = signIssuedVc(
@@ -198,6 +199,7 @@ class IssuerAgent(
             selectiveDisclosureAlgorithm = credential.sdAlgorithm.toIanaName(),
             confirmationClaim = cnf,
             statusElement = vckJsonSerializer.encodeToJsonElement(credentialStatus),
+            disclosurePolicies = credential.disclosurePolicies
         )
         val vcSdJwtObject = vckJsonSerializer.encodeToJsonElement(vcSdJwt).jsonObject
         val entireObject = buildJsonObject {

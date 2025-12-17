@@ -6,6 +6,7 @@ import at.asitplus.signum.indispensable.CryptoPublicKey
 import at.asitplus.signum.indispensable.Digest
 import at.asitplus.wallet.lib.data.ConstantIndex
 import at.asitplus.wallet.lib.data.CredentialSubject
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.jws.JwsHeaderModifierFun
 import kotlin.time.Instant
 
@@ -14,6 +15,7 @@ sealed class CredentialToBeIssued {
     abstract val scheme: ConstantIndex.CredentialScheme
     abstract val subjectPublicKey: CryptoPublicKey
     abstract val userInfo: OidcUserInfoExtended
+    abstract val disclosurePolicies: List<DisclosurePolicy>?
 
     data class VcJwt(
         val subject: CredentialSubject,
@@ -21,6 +23,7 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
+        override val disclosurePolicies: List<DisclosurePolicy>? = null
     ) : CredentialToBeIssued()
 
     data class VcSd(
@@ -29,6 +32,7 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
+        override val disclosurePolicies: List<DisclosurePolicy>? = null,
         /** Implement to add type metadata field */
         val modifyHeader: JwsHeaderModifierFun = JwsHeaderModifierFun { it },
         val sdAlgorithm: Digest = Digest.SHA256
@@ -40,6 +44,7 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
+        override val disclosurePolicies: List<DisclosurePolicy>? = null,
     ) : CredentialToBeIssued()
 }
 
