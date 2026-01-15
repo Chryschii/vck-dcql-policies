@@ -120,7 +120,8 @@ interface Holder {
      */
     suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
-        filterById: String? = null
+        filterById: String? = null,
+        relyingPartyId: String? = null
     ): KmmResult<DCQLQueryResult<SubjectCredentialStore.StoreEntry>>
 }
 

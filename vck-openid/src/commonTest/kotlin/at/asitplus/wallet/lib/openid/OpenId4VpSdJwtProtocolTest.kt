@@ -1,5 +1,6 @@
 package at.asitplus.wallet.lib.openid
 
+import at.asitplus.openid.CredentialFormatEnum
 import at.asitplus.testballoon.invoke
 import at.asitplus.wallet.eupid.EuPidScheme
 import at.asitplus.wallet.lib.agent.EphemeralKeyWithoutCert
@@ -20,6 +21,19 @@ import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.openid.dcql.DCQLQuery
+import at.asitplus.openid.dcql.DCQLCredentialQueryList
+import at.asitplus.openid.dcql.DCQLSdJwtCredentialQuery
+import at.asitplus.openid.dcql.DCQLCredentialQueryIdentifier
+import at.asitplus.openid.dcql.DCQLSdJwtCredentialMetadataAndValidityConstraints
+import at.asitplus.openid.dcql.DCQLClaimsQueryList
+import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
+import at.asitplus.openid.dcql.DCQLClaimsPathPointer
+import at.asitplus.wallet.lib.agent.CredentialToBeIssued
+import io.kotest.matchers.nulls.shouldBeNull
+
+
 
 val OpenId4VpSdJwtProtocolTest by testSuite {
 
@@ -117,4 +131,78 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             result.reconstructed[it].shouldNotBeNull()
         }
     }
+
+    "Embedded Disclosure Policy restricts claims" {
+        holderAgent = HolderAgent(holderKeyMaterial)
+
+        // Policy which allows only given_name for this verifier
+        val policy = DisclosurePolicy(
+            relyingPartyId = clientId,
+            policy = DCQLQuery(
+                credentials = DCQLCredentialQueryList(
+                    DCQLSdJwtCredentialQuery(
+                        id = DCQLCredentialQueryIdentifier("policy"),
+                        format = CredentialFormatEnum.DC_SD_JWT,
+                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
+                        ),
+                        claims = DCQLClaimsQueryList(
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        // Issue credential
+        val credentialToBeIssued = DummyCredentialDataProvider.getCredential(
+            holderKeyMaterial.publicKey,
+            AtomicAttribute2023,
+            SD_JWT
+        ).getOrThrow()
+
+        // Add the disclosure policy to the credential
+        val credentialWithPolicy = when (credentialToBeIssued) {
+            is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
+                disclosurePolicies = listOf(policy)
+            )
+            else -> error("Expected VcSd credential")
+        }
+
+        val credential = IssuerAgent(
+            identifier = "https://issuer.example.com/".toUri(),
+            randomSource = RandomSource.Default
+        ).issueCredential(credentialWithPolicy).getOrThrow()
+
+        holderAgent.storeCredential(credential.toStoreCredentialInput())
+
+        // Verifier requests BOTH claims
+        val authnRequest = verifierOid4vp.createAuthnRequest(
+            RequestOptions(
+                credentials = setOf(
+                    RequestOptionsCredential(
+                        AtomicAttribute2023,
+                        SD_JWT,
+                        setOf(
+                            AtomicAttribute2023.CLAIM_GIVEN_NAME,
+                            AtomicAttribute2023.CLAIM_FAMILY_NAME
+                        )
+                    )
+                )
+            ),
+            OpenId4VpVerifier.CreationOptions.Query(walletUrl)
+        ).getOrThrow().url
+
+        val authnResponse = holderOid4vp.createAuthnResponse(authnRequest).getOrThrow()
+            .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
+        val result = verifierOid4vp.validateAuthnResponse(authnResponse.url)
+            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
+
+        // Verify that only given_name disclosed & family_name blocked by policy
+        result.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
+        result.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldBeNull()
+    }
+
 }

@@ -40,7 +40,6 @@ import at.asitplus.wallet.lib.agent.Holder
 import at.asitplus.wallet.lib.agent.HolderAgent
 import at.asitplus.wallet.lib.agent.KeyMaterial
 import at.asitplus.wallet.lib.agent.RandomSource
-import at.asitplus.wallet.lib.agent.SubjectCredentialStore
 import at.asitplus.wallet.lib.cbor.CoseHeaderNone
 import at.asitplus.wallet.lib.cbor.SignCose
 import at.asitplus.wallet.lib.cbor.SignCoseDetached
@@ -48,7 +47,6 @@ import at.asitplus.wallet.lib.cbor.SignCoseDetachedFun
 import at.asitplus.wallet.lib.cbor.SignCoseFun
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
-import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.vckJsonSerializer
 import at.asitplus.wallet.lib.jws.EncryptJwe
 import at.asitplus.wallet.lib.jws.EncryptJweFun
@@ -57,12 +55,10 @@ import at.asitplus.wallet.lib.jws.SignJwt
 import at.asitplus.wallet.lib.jws.SignJwtFun
 import at.asitplus.wallet.lib.oidc.RequestObjectJwsVerifier
 import at.asitplus.wallet.lib.oidvci.DefaultMapStore
-import at.asitplus.wallet.lib.oidvci.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.oidvci.MapStore
 import at.asitplus.wallet.lib.oidvci.OAuth2Error
 import at.asitplus.wallet.lib.oidvci.OAuth2Exception
 import at.asitplus.wallet.lib.oidvci.OAuth2Exception.InvalidRequest
-import at.asitplus.wallet.lib.oidvci.PolicyValidationResult
 import com.benasher44.uuid.uuid4
 import kotlin.time.Clock
 
@@ -376,70 +372,34 @@ class OpenId4VpHolder(
     suspend fun getMatchingCredentials(
         preparationState: AuthorizationResponsePreparationState,
     ) = catchingUnwrapped {
-        when (val credentialRequest = preparationState.credentialPresentationRequest) {
-            is CredentialPresentationRequest.DCQLRequest -> {
-                val dcqlQueryResult = holder.matchDCQLQueryAgainstCredentialStore(
-                    dcqlQuery = credentialRequest.dcqlQuery,
-                    filterById = preparationState.request.credentialId()
-                    //filter nach id und filter nach policy indem propagaten ganz nach unten hier
-                ).getOrThrow()
-
-                val relyingPartyId = preparationState.request.parameters.clientId
-                    ?: throw InvalidRequest("Client ID (relyingPartyId) is missing from the request.")
-
-                // Extract disclosure policies from StoreEntry objects
-                val policiesFromCredentials = dcqlQueryResult.credentialQueryMatches.values
-                    .flatten()
-                    .mapNotNull { submissionOption ->
-                        submissionOption.credential.getDisclosurePolicies()
-                    }
-                    .flatten()
-
-                // Validate policies
-                val policyValidationResult = DisclosurePolicyValidator.validate(
-                    relyingPartyId = relyingPartyId,
-                    requestQuery = credentialRequest.dcqlQuery,
-                    policies = policiesFromCredentials,
-                )
-
-                if (policyValidationResult is PolicyValidationResult.Failure) {
-                    throw OAuth2Exception.AccessDenied("Policy Violation: ${policyValidationResult.reason}")
-                }
-
+        when (val it = preparationState.credentialPresentationRequest) {
+            is CredentialPresentationRequest.DCQLRequest ->
                 DCQLMatchingResult(
-                    presentationRequest = credentialRequest,
-                    dcqlQueryResult = dcqlQueryResult
+                    presentationRequest = it,
+                    dcqlQueryResult = holder.matchDCQLQueryAgainstCredentialStore(
+                        dcqlQuery = it.dcqlQuery,
+                        filterById = preparationState.request.credentialId(),
+                        relyingPartyId = preparationState.request.parameters.clientId
+                    ).getOrThrow()
                 )
-            }
 
             is CredentialPresentationRequest.PresentationExchangeRequest ->
                 holder.matchInputDescriptorsAgainstCredentialStore(
-                    inputDescriptors = credentialRequest.presentationDefinition.inputDescriptors,
-                    fallbackFormatHolder = credentialRequest.fallbackFormatHolder,
+                    inputDescriptors = it.presentationDefinition.inputDescriptors,
+                    fallbackFormatHolder = it.fallbackFormatHolder,
                     filterById = preparationState.request.credentialId()
                 ).getOrThrow().let { matchInputDescriptors ->
                     if (matchInputDescriptors.values.find { it.size != 0 } == null) {
                         throw OAuth2Exception.AccessDenied("No matching credential")
                     } else {
                         PresentationExchangeMatchingResult(
-                            presentationRequest = credentialRequest,
+                            presentationRequest = it,
                             matchingInputDescriptorCredentials = matchInputDescriptors
                         )
                     }
                 }
 
             null -> TODO()
-        }
-    }
-
-    /**
-     * Helper function to extract disclosure policies from StoreEntry
-     */
-    private fun SubjectCredentialStore.StoreEntry.getDisclosurePolicies(): List<DisclosurePolicy>? {
-        return when (this) {
-            is SubjectCredentialStore.StoreEntry.Vc -> this.vc.vc.disclosurePolicies
-            is SubjectCredentialStore.StoreEntry.SdJwt -> this.sdJwt.disclosurePolicies
-            is SubjectCredentialStore.StoreEntry.Iso -> null
         }
     }
 

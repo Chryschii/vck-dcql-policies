@@ -11,6 +11,8 @@ import at.asitplus.dif.PresentationSubmissionDescriptor
 import at.asitplus.jsonpath.core.NodeList
 import at.asitplus.jsonpath.core.NormalizedJsonPath
 import at.asitplus.openid.CredentialFormatEnum
+import at.asitplus.openid.dcql.DCQLClaimsQueryResult
+import at.asitplus.openid.dcql.DCQLCredentialQueryMatchingResult
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLQueryResult
 import at.asitplus.signum.indispensable.cosef.CoseKey
@@ -343,11 +345,168 @@ class HolderAgent(
     override suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String?,
+        relyingPartyId: String?,
     ): KmmResult<DCQLQueryResult<StoreEntry>> {
-        return DCQLQueryAdapter(dcqlQuery).select(
-            credentials = getValidCredentialsByPriority(filterById)
-                ?: throw PresentationException("Credentials could not be retrieved from the store"),
+        val candidates = getValidCredentialsByPriority(filterById)
+            ?: throw PresentationException("Credentials could not be retrieved from the store")
+        if (relyingPartyId == null) {
+            return DCQLQueryAdapter(dcqlQuery).select(candidates)
+        }
+
+        // Embedded disclosure policy enforcement for SD-JWT credentials
+        return catching {
+            val filteredCandidates = candidates.mapNotNull { credential ->
+                if (credential is StoreEntry.SdJwt) {
+                    val policies = credential.sdJwt.disclosurePolicies
+                    val policyForRp = policies?.find { it.relyingPartyId == relyingPartyId }
+
+                    if (policyForRp != null) {
+                        val policyAdapter = DCQLQueryAdapter(policyForRp.policy)
+                        val policyResult = policyAdapter.select(listOf(credential)).getOrThrow()
+
+                        if (policyResult.credentialQueryMatches.values.any { it.isNotEmpty() }) {
+                            credential
+                        } else {
+                            null
+                        }
+                    } else {
+                        credential
+                    }
+                } else {
+                    credential
+                }
+            }
+
+            // Run the verifier's requested query and intersect with policies
+            val requestedQueryResult = DCQLQueryAdapter(dcqlQuery).select(filteredCandidates).getOrThrow()
+            intersectWithPolicies(
+                requestedResult = requestedQueryResult,
+                relyingPartyId = relyingPartyId
+            )
+        }
+    }
+
+    /**
+     * Intersects the requested DCQL result with the disclosure policies of the respective credential.
+     */
+    private fun intersectWithPolicies(
+        requestedResult: DCQLQueryResult<StoreEntry>,
+        relyingPartyId: String
+    ): DCQLQueryResult<StoreEntry> {
+        val filteredMatches = requestedResult.credentialQueryMatches.mapValues { (_, submissionOptions) ->
+            submissionOptions.mapNotNull { option ->
+                val credential = option.credential
+
+                if (credential is StoreEntry.SdJwt) {
+                    val policyForRp = credential.sdJwt.disclosurePolicies?.find {
+                        it.relyingPartyId == relyingPartyId
+                    }
+
+                    if (policyForRp != null) {
+                        val policyAdapter = DCQLQueryAdapter(policyForRp.policy)
+                        val policyResult = policyAdapter.select(listOf(credential)).getOrNull()
+                            ?: return@mapNotNull null
+
+                        val allowedMatchingResult = policyResult.credentialQueryMatches.values
+                            .flatten()
+                            .firstOrNull()
+                            ?.matchingResult
+                            ?: return@mapNotNull null
+
+                        val intersectedMatchingResult = intersectMatchingResults(
+                            requested = option.matchingResult,
+                            allowed = allowedMatchingResult
+                        ) ?: return@mapNotNull null
+
+                        option.copy(matchingResult = intersectedMatchingResult)
+                    } else {
+                        option
+                    }
+                } else {
+                    option
+                }
+            }
+        }.filterValues { it.isNotEmpty() }
+
+        return DCQLQueryResult(
+            credentialQueryMatches = filteredMatches,
+            satisfiableCredentialSetQueries = requestedResult.satisfiableCredentialSetQueries
         )
+    }
+
+    /**
+     * Intersects two DCQLCredentialQueryMatchingResult objects.
+     * Returns only the claims that are present in BOTH results.
+     */
+    private fun intersectMatchingResults(
+        requested: DCQLCredentialQueryMatchingResult,
+        allowed: DCQLCredentialQueryMatchingResult
+    ): DCQLCredentialQueryMatchingResult? {
+        return when (requested) {
+            // If both request all claims, intersection is all claims
+            is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
+                if allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
+                    DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
+            }
+
+            // If request is all but policy is specific, return the policy's allowed claims
+            is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
+                if allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                    allowed
+            }
+
+            // If request is specific but policy allows all, return the request
+            is DCQLCredentialQueryMatchingResult.ClaimsQueryResults
+                if allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
+                    requested
+            }
+
+            // Both are specific: intersect the claim query results
+            is DCQLCredentialQueryMatchingResult.ClaimsQueryResults
+                if allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                    val intersection = intersectClaimsQueryResults(
+                        requested.claimsQueryResults,
+                        allowed.claimsQueryResults
+                    )
+
+                    if (intersection.isEmpty()) {
+                        null // No common claim
+                    } else {
+                        DCQLCredentialQueryMatchingResult.ClaimsQueryResults(intersection)
+                    }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Intersects two lists of DCQLClaimsQueryResult.
+     * For JSON-based credentials, keeps only claims with matching paths.
+     */
+    private fun intersectClaimsQueryResults(
+        requested: List<DCQLClaimsQueryResult>,
+        allowed: List<DCQLClaimsQueryResult>
+    ): List<DCQLClaimsQueryResult> {
+        return requested.filter { requestedClaim ->
+            allowed.any { allowedClaim ->
+                claimsMatch(requestedClaim, allowedClaim)
+            }
+        }
+    }
+
+    /**
+     * Checks if two DCQLClaimsQueryResult represent the same claim.
+     * Used for SD-JWT disclosure policy enforcement (JSON-based claims only).
+     */
+    private fun claimsMatch(
+        claim1: DCQLClaimsQueryResult,
+        claim2: DCQLClaimsQueryResult
+    ): Boolean {
+        if (claim1 !is DCQLClaimsQueryResult.JsonResult) return false
+        if (claim2 !is DCQLClaimsQueryResult.JsonResult) return false
+
+        // Compare paths for SD-JWT
+        return claim1.nodeList.toString() == claim2.nodeList.toString()
     }
 
     private fun PresentationSubmission.Companion.fromMatches(

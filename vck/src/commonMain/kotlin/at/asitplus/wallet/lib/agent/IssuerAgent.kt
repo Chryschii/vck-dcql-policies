@@ -149,7 +149,6 @@ class IssuerAgent(
             credentialStatus = credentialStatus,
             credentialSubject = credential.subject,
             credentialType = credential.scheme.vcType!!,
-            disclosurePolicies = credential.disclosurePolicies
         )
 
         val vcInJws = signIssuedVc(
@@ -243,5 +242,4 @@ class IssuerAgent(
         expiration = expirationDate,
         jwtId = id
     )
-
 }

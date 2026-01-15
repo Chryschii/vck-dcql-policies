@@ -15,7 +15,6 @@ sealed class CredentialToBeIssued {
     abstract val scheme: ConstantIndex.CredentialScheme
     abstract val subjectPublicKey: CryptoPublicKey
     abstract val userInfo: OidcUserInfoExtended
-    abstract val disclosurePolicies: List<DisclosurePolicy>?
 
     data class VcJwt(
         val subject: CredentialSubject,
@@ -23,7 +22,6 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
-        override val disclosurePolicies: List<DisclosurePolicy>? = null
     ) : CredentialToBeIssued()
 
     data class VcSd(
@@ -32,8 +30,8 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
-        override val disclosurePolicies: List<DisclosurePolicy>? = null,
         /** Implement to add type metadata field */
+        val disclosurePolicies: List<DisclosurePolicy>? = null,
         val modifyHeader: JwsHeaderModifierFun = JwsHeaderModifierFun { it },
         val sdAlgorithm: Digest = Digest.SHA256
     ) : CredentialToBeIssued()
@@ -44,7 +42,6 @@ sealed class CredentialToBeIssued {
         override val scheme: ConstantIndex.CredentialScheme,
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
-        override val disclosurePolicies: List<DisclosurePolicy>? = null,
     ) : CredentialToBeIssued()
 }
 

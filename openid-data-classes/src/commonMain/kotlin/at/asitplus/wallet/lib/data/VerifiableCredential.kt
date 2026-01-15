@@ -31,8 +31,6 @@ data class VerifiableCredential(
     @Polymorphic
     @SerialName("credentialSubject")
     val credentialSubject: CredentialSubject,
-    @SerialName("disclosurePolicies")
-    val disclosurePolicies: List<DisclosurePolicy>? = null,
 ) {
     constructor(
         id: String,
@@ -43,7 +41,6 @@ data class VerifiableCredential(
         credentialType: String,
         issuanceDate: Instant = Clock.System.now(),
         expirationDate: Instant? = Clock.System.now() + lifetime,
-        disclosurePolicies: List<DisclosurePolicy>? = null,
     ) : this(
         id = id,
         type = listOf(VERIFIABLE_CREDENTIAL, credentialType),
@@ -52,7 +49,6 @@ data class VerifiableCredential(
         expirationDate = expirationDate,
         credentialStatus = credentialStatus,
         credentialSubject = credentialSubject,
-        disclosurePolicies = disclosurePolicies,
     )
 
     constructor(
@@ -63,7 +59,6 @@ data class VerifiableCredential(
         credentialStatus: Status,
         credentialSubject: CredentialSubject,
         credentialType: String,
-        disclosurePolicies: List<DisclosurePolicy>? = null,
     ) : this(
         id = id,
         type = listOf(VERIFIABLE_CREDENTIAL, credentialType),
@@ -72,6 +67,5 @@ data class VerifiableCredential(
         expirationDate = expirationDate,
         credentialStatus = credentialStatus,
         credentialSubject = credentialSubject,
-        disclosurePolicies = disclosurePolicies,
     )
 }
