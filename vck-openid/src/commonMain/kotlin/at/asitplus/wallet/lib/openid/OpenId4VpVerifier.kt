@@ -40,6 +40,8 @@ import at.asitplus.openid.SupportedAlgorithmsContainerSdJwt
 import at.asitplus.openid.TransactionDataBase64Url
 import at.asitplus.openid.VpFormatsSupported
 import at.asitplus.openid.dcql.DCQLCredentialQueryIdentifier
+import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
+import at.asitplus.openid.dcql.DCQLSdJwtCredentialQuery
 import at.asitplus.signum.indispensable.SignatureAlgorithm
 import at.asitplus.signum.indispensable.cosef.io.coseCompliantSerializer
 import at.asitplus.signum.indispensable.cosef.toCoseAlgorithm
@@ -553,8 +555,20 @@ class OpenId4VpVerifier(
                 val credentialQuery = credentialQueryMap[credentialQueryId]
                     ?: throw IllegalArgumentException("Unknown credential query identifier.")
 
+                // Get requested claims from the query
+                val requestedClaims = when (credentialQuery) {
+                    is DCQLSdJwtCredentialQuery -> credentialQuery.claims?.flatMap { claimsQuery ->
+                        when (claimsQuery) {
+                            else -> {
+                                claimsQuery.path.segments.joinToString("/").let { listOf(it) }
+                            }
+                        }
+                    }?.toSet() ?: emptySet()
+                    else -> emptySet()
+                }
+
                 catchingUnwrapped {
-                    verifyPresentationResult(
+                    val result = verifyPresentationResult(
                         claimFormat = credentialQuery.format.toClaimFormat(),
                         relatedPresentation = relatedPresentation,
                         expectedNonce = expectedNonce,
@@ -563,6 +577,31 @@ class OpenId4VpVerifier(
                         responseUrl = authnRequest.responseUrl ?: authnRequest.redirectUrlExtracted,
                         transactionData = authnRequest.transactionData,
                     ).mapToAuthnResponseResult(state)
+
+                    // Check if this is an SD-JWT result and if claims were restricted
+                    if (result is AuthnResponseResult.SuccessSdJwt && requestedClaims.isNotEmpty()) {
+                        val disclosedClaims = result.reconstructed.keys
+                        val restrictedClaims = requestedClaims - disclosedClaims
+
+                        if (restrictedClaims.isNotEmpty()) {
+                            // Claims were restricted by policy - return RestrictedSdJwt
+                            AuthnResponseResult.RestrictedSdJwt(
+                                sdJwtSigned = result.sdJwtSigned,
+                                verifiableCredentialSdJwt = result.verifiableCredentialSdJwt,
+                                reconstructed = result.reconstructed,
+                                disclosures = result.disclosures,
+                                state = result.state,
+                                freshnessSummary = result.freshnessSummary,
+                                requestedClaims = requestedClaims,
+                                disclosedClaims = disclosedClaims,
+                                restrictedClaims = restrictedClaims,
+                            )
+                        } else {
+                            result
+                        }
+                    } else {
+                        result
+                    }
                 }.getOrElse {
                     return AuthnResponseResult.ValidationError("Invalid presentation", state, it)
                 }

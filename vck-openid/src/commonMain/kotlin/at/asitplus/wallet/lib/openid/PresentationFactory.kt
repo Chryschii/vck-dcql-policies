@@ -88,6 +88,7 @@ internal class PresentationFactory(
         val vpRequestParams = PresentationRequestParameters(
             nonce = nonce,
             audience = audience,
+            clientId = request.clientId,
             transactionData = request.transactionData,
             calcIsoDeviceSignaturePlain = {
                 calcDeviceSignature(

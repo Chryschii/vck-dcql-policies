@@ -250,11 +250,15 @@ class HolderAgent(
         credentialPresentation: CredentialPresentation.DCQLPresentation,
     ): KmmResult<PresentationResponseParameters.DCQLParameters> = catching {
         val dcqlQuery = credentialPresentation.presentationRequest.dcqlQuery
+        val relyingPartyId = request.clientId
 
         val requestedCredentialSetQueries =
             credentialPresentation.presentationRequest.dcqlQuery.requestedCredentialSetQueries
         val credentialSubmissions = credentialPresentation.credentialQuerySubmissions
-            ?: matchDCQLQueryAgainstCredentialStore(dcqlQuery).getOrThrow()
+            ?: matchDCQLQueryAgainstCredentialStore(
+                dcqlQuery,
+                request.audience,
+                relyingPartyId).getOrThrow()
                 .toDefaultSubmission().getOrThrow()
 
         DCQLQuery.Procedures.isSatisfactoryCredentialSubmission(

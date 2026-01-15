@@ -59,6 +59,22 @@ sealed class AuthnResponseResult {
     ) : AuthnResponseResult()
 
     /**
+     * Successfully decoded and validated the response from the Wallet (SD-JWT VC),
+     * but some requested claims were restricted by an embedded disclosure policy
+     */
+    data class RestrictedSdJwt(
+        val sdJwtSigned: SdJwtSigned,
+        val verifiableCredentialSdJwt: VerifiableCredentialSdJwt,
+        val reconstructed: JsonObject,
+        val disclosures: Collection<SelectiveDisclosureItem>,
+        val state: String?,
+        val freshnessSummary: CredentialFreshnessSummary.SdJwt,
+        val requestedClaims: Set<String>,  // What the verifier requested
+        val disclosedClaims: Set<String>,  // What was actually disclosed
+        val restrictedClaims: Set<String>, // What was blocked by policy
+    ) : AuthnResponseResult()
+
+    /**
      * Successfully decoded and validated the response from the Wallet (ISO mDoc credential)
      */
     data class SuccessIso(
