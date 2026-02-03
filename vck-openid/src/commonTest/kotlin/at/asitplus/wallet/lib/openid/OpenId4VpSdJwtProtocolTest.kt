@@ -209,7 +209,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
 
         // Verify that only given_name disclosed & family_name blocked by policy
-        //result.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
-        //result.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldBeNull()
+        val sdJwtResult = result.validationResults.values.single()
+            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
+
+        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
+        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldBeNull()
     }
 }
