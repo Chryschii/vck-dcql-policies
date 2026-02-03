@@ -37,7 +37,7 @@ import kotlinx.serialization.json.buildJsonObject
 data class PresentationRequestParameters(
     val nonce: String,
     val audience: String,
-    val clientId: String? = null,
+    val clientId: String?,
     val transactionData: List<TransactionDataBase64Url>? = null,
     @Deprecated("Use calcIsoDeviceSignaturePlain instead")
     val calcIsoDeviceSignature: (suspend (docType: String, deviceNameSpaceBytes: ByteStringWrapper<DeviceNameSpaces>) -> Pair<CoseSigned<ByteArray>, String?>?) =

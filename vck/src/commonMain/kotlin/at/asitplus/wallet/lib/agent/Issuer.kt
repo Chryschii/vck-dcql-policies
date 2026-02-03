@@ -7,6 +7,7 @@ import at.asitplus.signum.indispensable.CryptoPublicKey
 import at.asitplus.signum.indispensable.SignatureAlgorithm
 import at.asitplus.signum.indispensable.josef.JwsSigned
 import at.asitplus.wallet.lib.data.ConstantIndex
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.VerifiableCredential
 import at.asitplus.wallet.lib.data.VerifiableCredentialJws
 import at.asitplus.wallet.lib.data.VerifiableCredentialSdJwt
@@ -49,6 +50,7 @@ interface Issuer : ReferencedTokenIssuer<CredentialToBeIssued, KmmResult<Issuer.
             override val scheme: ConstantIndex.CredentialScheme,
             override val subjectPublicKey: CryptoPublicKey,
             override val userInfo: OidcUserInfoExtended,
+            val disclosurePolicies: List<DisclosurePolicy>? = null,
         ) : IssuedCredential()
 
         /**
@@ -86,6 +88,6 @@ interface Issuer : ReferencedTokenIssuer<CredentialToBeIssued, KmmResult<Issuer.
 
 fun Issuer.IssuedCredential.toStoreCredentialInput() = when (this) {
     is Issuer.IssuedCredential.Iso -> Holder.StoreCredentialInput.Iso(issuerSigned, scheme)
-    is Issuer.IssuedCredential.VcSdJwt -> Holder.StoreCredentialInput.SdJwt(signedSdJwtVc, signedSdJwtVc.serialize(), scheme)
+    is Issuer.IssuedCredential.VcSdJwt -> Holder.StoreCredentialInput.SdJwt(signedSdJwtVc, signedSdJwtVc.serialize(), scheme, disclosurePolicies)
     is Issuer.IssuedCredential.VcJwt -> Holder.StoreCredentialInput.Vc(signedVcJws, signedVcJws.serialize(), scheme)
 }

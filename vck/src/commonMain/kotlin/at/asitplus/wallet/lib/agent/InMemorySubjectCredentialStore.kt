@@ -4,6 +4,7 @@ import at.asitplus.KmmResult
 import at.asitplus.catching
 import at.asitplus.iso.IssuerSigned
 import at.asitplus.wallet.lib.data.ConstantIndex
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.SelectiveDisclosureItem
 import at.asitplus.wallet.lib.data.VerifiableCredentialJws
 import at.asitplus.wallet.lib.data.VerifiableCredentialSdJwt
@@ -23,9 +24,15 @@ class InMemorySubjectCredentialStore : SubjectCredentialStore {
         vc: VerifiableCredentialSdJwt,
         vcSerialized: String,
         disclosures: Map<String, SelectiveDisclosureItem?>,
-        scheme: ConstantIndex.CredentialScheme
-    ) = SubjectCredentialStore.StoreEntry.SdJwt(vcSerialized, vc, disclosures, scheme.schemaUri)
-        .also { credentials += it }
+        scheme: ConstantIndex.CredentialScheme,
+        disclosurePolicies: List<DisclosurePolicy>?,
+    ) = SubjectCredentialStore.StoreEntry.SdJwt(
+        vcSerialized = vcSerialized,
+        sdJwt = vc,
+        disclosures = disclosures,
+        schemaUri = scheme.schemaUri,
+        disclosurePolicies = disclosurePolicies,
+    ).also { credentials += it }
 
     override suspend fun storeCredential(
         issuerSigned: IssuerSigned,

@@ -7,6 +7,7 @@ import at.asitplus.iso.sha256
 import at.asitplus.signum.indispensable.cosef.io.coseCompliantSerializer
 import at.asitplus.wallet.lib.data.AttributeIndex
 import at.asitplus.wallet.lib.data.ConstantIndex
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.IsoMdocFallbackCredentialScheme
 import at.asitplus.wallet.lib.data.SdJwtFallbackCredentialScheme
 import at.asitplus.wallet.lib.data.SelectiveDisclosureItem
@@ -50,6 +51,7 @@ interface SubjectCredentialStore {
         vcSerialized: String,
         disclosures: Map<String, SelectiveDisclosureItem?>,
         scheme: ConstantIndex.CredentialScheme,
+        disclosurePolicies: List<DisclosurePolicy>? = null,
     ): StoreEntry
 
     /**
@@ -102,6 +104,8 @@ interface SubjectCredentialStore {
             val disclosures: Map<String, SelectiveDisclosureItem?>,
             @SerialName("schema-uri")
             override val schemaUri: String,
+            @SerialName("disclosure-policies")
+            val disclosurePolicies: List<DisclosurePolicy>? = null,
         ) : StoreEntry {
             override fun getFallbackScheme(): ConstantIndex.CredentialScheme? =
                 SdJwtFallbackCredentialScheme(sdJwt.verifiableCredentialType)

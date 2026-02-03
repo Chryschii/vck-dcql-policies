@@ -90,6 +90,7 @@ class HolderAgent(
                     credential.vcSdJwt,
                     validated.disclosures,
                     credential.scheme,
+                    credential.disclosurePolicies,
                 )
             }
 
@@ -255,10 +256,9 @@ class HolderAgent(
         val requestedCredentialSetQueries =
             credentialPresentation.presentationRequest.dcqlQuery.requestedCredentialSetQueries
         val credentialSubmissions = credentialPresentation.credentialQuerySubmissions
-            ?: matchDCQLQueryAgainstCredentialStore(
-                dcqlQuery,
-                request.audience,
-                relyingPartyId).getOrThrow()
+            ?: matchDCQLQueryAgainstCredentialStore(dcqlQuery,
+                filterById = null,
+                relyingPartyId = relyingPartyId).getOrThrow()
                 .toDefaultSubmission().getOrThrow()
 
         DCQLQuery.Procedures.isSatisfactoryCredentialSubmission(
@@ -353,36 +353,15 @@ class HolderAgent(
     ): KmmResult<DCQLQueryResult<StoreEntry>> {
         val candidates = getValidCredentialsByPriority(filterById)
             ?: throw PresentationException("Credentials could not be retrieved from the store")
+
+        val requestedQueryResult = DCQLQueryAdapter(dcqlQuery).select(candidates).getOrElse {
+            return KmmResult.failure(it)
+        }
         if (relyingPartyId == null) {
-            return DCQLQueryAdapter(dcqlQuery).select(candidates)
+            return KmmResult.success(requestedQueryResult)
         }
 
-        // Embedded disclosure policy enforcement for SD-JWT credentials
         return catching {
-            val filteredCandidates = candidates.mapNotNull { credential ->
-                if (credential is StoreEntry.SdJwt) {
-                    val policies = credential.sdJwt.disclosurePolicies
-                    val policyForRp = policies?.find { it.relyingPartyId == relyingPartyId }
-
-                    if (policyForRp != null) {
-                        val policyAdapter = DCQLQueryAdapter(policyForRp.policy)
-                        val policyResult = policyAdapter.select(listOf(credential)).getOrThrow()
-
-                        if (policyResult.credentialQueryMatches.values.any { it.isNotEmpty() }) {
-                            credential
-                        } else {
-                            null
-                        }
-                    } else {
-                        credential
-                    }
-                } else {
-                    credential
-                }
-            }
-
-            // Run the verifier's requested query and intersect with policies
-            val requestedQueryResult = DCQLQueryAdapter(dcqlQuery).select(filteredCandidates).getOrThrow()
             intersectWithPolicies(
                 requestedResult = requestedQueryResult,
                 relyingPartyId = relyingPartyId
@@ -402,7 +381,7 @@ class HolderAgent(
                 val credential = option.credential
 
                 if (credential is StoreEntry.SdJwt) {
-                    val policyForRp = credential.sdJwt.disclosurePolicies?.find {
+                    val policyForRp = credential.disclosurePolicies?.find {
                         it.relyingPartyId == relyingPartyId
                     }
 

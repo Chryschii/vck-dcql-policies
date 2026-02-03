@@ -225,6 +225,7 @@ class IssuerAgent(
             scheme = credential.scheme,
             subjectPublicKey = credential.subjectPublicKey,
             userInfo = credential.userInfo,
+            disclosurePolicies = credential.disclosurePolicies
         ).also {
             issuerCredentialStore.updateStoredCredential(reference, it).getOrThrow()
         }

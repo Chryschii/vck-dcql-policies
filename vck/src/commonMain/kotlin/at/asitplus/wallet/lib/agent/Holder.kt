@@ -13,6 +13,7 @@ import at.asitplus.signum.indispensable.josef.JwsSigned
 import at.asitplus.wallet.lib.data.ConstantIndex
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.VerifiableCredentialJws
 import at.asitplus.wallet.lib.jws.SdJwtSigned
 
@@ -39,6 +40,7 @@ interface Holder {
             val signedSdJwtVc: SdJwtSigned,
             val vcSdJwt: String,
             val scheme: ConstantIndex.CredentialScheme,
+            val disclosurePolicies: List<DisclosurePolicy>? = null,
         ) : StoreCredentialInput()
 
         data class Iso(
