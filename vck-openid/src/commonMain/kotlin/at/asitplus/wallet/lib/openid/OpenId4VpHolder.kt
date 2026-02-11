@@ -6,6 +6,7 @@ import at.asitplus.catchingUnwrapped
 import at.asitplus.dif.PresentationDefinition
 import at.asitplus.openid.AuthenticationRequestParameters
 import at.asitplus.openid.AuthenticationResponseParameters
+import at.asitplus.openid.CredentialFormatEnum
 import at.asitplus.openid.IdToken
 import at.asitplus.openid.IdTokenType
 import at.asitplus.openid.JarRequestParameters
@@ -26,6 +27,14 @@ import at.asitplus.openid.SupportedAlgorithmsContainerIso
 import at.asitplus.openid.SupportedAlgorithmsContainerJwt
 import at.asitplus.openid.SupportedAlgorithmsContainerSdJwt
 import at.asitplus.openid.VpFormatsSupported
+import at.asitplus.openid.dcql.DCQLClaimsPathPointer
+import at.asitplus.openid.dcql.DCQLClaimsPathPointerSegment
+import at.asitplus.openid.dcql.DCQLClaimsQueryList
+import at.asitplus.openid.dcql.DCQLCredentialQueryIdentifier
+import at.asitplus.openid.dcql.DCQLExpectedClaimValue
+import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
+import at.asitplus.openid.dcql.DCQLSdJwtCredentialMetadataAndValidityConstraints
+import at.asitplus.openid.dcql.DCQLSdJwtCredentialQuery
 import at.asitplus.signum.indispensable.SignatureAlgorithm
 import at.asitplus.signum.indispensable.cosef.toCoseAlgorithm
 import at.asitplus.signum.indispensable.josef.JsonWebKey
@@ -40,6 +49,7 @@ import at.asitplus.wallet.lib.agent.Holder
 import at.asitplus.wallet.lib.agent.HolderAgent
 import at.asitplus.wallet.lib.agent.KeyMaterial
 import at.asitplus.wallet.lib.agent.RandomSource
+import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.cbor.CoseHeaderNone
 import at.asitplus.wallet.lib.cbor.SignCose
 import at.asitplus.wallet.lib.cbor.SignCoseDetached
@@ -373,15 +383,21 @@ class OpenId4VpHolder(
         preparationState: AuthorizationResponsePreparationState,
     ) = catchingUnwrapped {
         when (val it = preparationState.credentialPresentationRequest) {
-            is CredentialPresentationRequest.DCQLRequest ->
+            is CredentialPresentationRequest.DCQLRequest -> {
+                // Create a selector query for policies matching this relying party's ID
+                val relyingPartySelectorQuery = preparationState.request.parameters.clientId?.let { clientId ->
+                    DisclosurePolicyValidator.createDisclosurePolicySelectorQuery(clientId)
+                }
+
                 DCQLMatchingResult(
                     presentationRequest = it,
                     dcqlQueryResult = holder.matchDCQLQueryAgainstCredentialStore(
                         dcqlQuery = it.dcqlQuery,
                         filterById = preparationState.request.credentialId(),
-                        relyingPartyId = preparationState.request.parameters.clientId
+                        disclosurePolicySelectorQuery = relyingPartySelectorQuery
                     ).getOrThrow()
                 )
+            }
 
             is CredentialPresentationRequest.PresentationExchangeRequest ->
                 holder.matchInputDescriptorsAgainstCredentialStore(

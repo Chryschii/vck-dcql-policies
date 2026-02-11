@@ -31,6 +31,7 @@ import at.asitplus.openid.dcql.DCQLClaimsQueryList
 import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
 import at.asitplus.openid.dcql.DCQLClaimsPathPointer
 import at.asitplus.wallet.lib.agent.CredentialToBeIssued
+import at.asitplus.wallet.lib.data.RelyingPartyAttributes
 import io.kotest.matchers.nulls.shouldBeNull
 
 
@@ -144,7 +145,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy which allows only given_name for this verifier
         val policy = DisclosurePolicy(
-            relyingPartyId = ClientIdScheme.RedirectUri(clientId).clientId,
+            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(

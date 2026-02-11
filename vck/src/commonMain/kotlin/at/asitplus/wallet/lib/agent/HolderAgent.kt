@@ -19,6 +19,7 @@ import at.asitplus.signum.indispensable.cosef.CoseKey
 import at.asitplus.signum.indispensable.cosef.toCoseKey
 import at.asitplus.signum.indispensable.pki.X509Certificate
 import at.asitplus.wallet.lib.agent.SubjectCredentialStore.StoreEntry
+import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
 import at.asitplus.wallet.lib.data.CredentialToJsonConverter
@@ -251,15 +252,18 @@ class HolderAgent(
         credentialPresentation: CredentialPresentation.DCQLPresentation,
     ): KmmResult<PresentationResponseParameters.DCQLParameters> = catching {
         val dcqlQuery = credentialPresentation.presentationRequest.dcqlQuery
-        val relyingPartyId = request.clientId
+        val disclosurePolicySelectorQuery = request.clientId?.let { clientId ->
+            DisclosurePolicyValidator.createDisclosurePolicySelectorQuery(clientId)
+        }
 
         val requestedCredentialSetQueries =
             credentialPresentation.presentationRequest.dcqlQuery.requestedCredentialSetQueries
         val credentialSubmissions = credentialPresentation.credentialQuerySubmissions
-            ?: matchDCQLQueryAgainstCredentialStore(dcqlQuery,
+            ?: matchDCQLQueryAgainstCredentialStore(
+                dcqlQuery = dcqlQuery,
                 filterById = null,
-                relyingPartyId = relyingPartyId).getOrThrow()
-                .toDefaultSubmission().getOrThrow()
+                disclosurePolicySelectorQuery = disclosurePolicySelectorQuery
+            ).getOrThrow().toDefaultSubmission().getOrThrow()
 
         DCQLQuery.Procedures.isSatisfactoryCredentialSubmission(
             credentialSubmissions = credentialSubmissions.keys,
@@ -349,7 +353,7 @@ class HolderAgent(
     override suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String?,
-        relyingPartyId: String?,
+        disclosurePolicySelectorQuery: DCQLQuery?,
     ): KmmResult<DCQLQueryResult<StoreEntry>> {
         val candidates = getValidCredentialsByPriority(filterById)
             ?: throw PresentationException("Credentials could not be retrieved from the store")
@@ -357,14 +361,15 @@ class HolderAgent(
         val requestedQueryResult = DCQLQueryAdapter(dcqlQuery).select(candidates).getOrElse {
             return KmmResult.failure(it)
         }
-        if (relyingPartyId == null) {
+
+        if (disclosurePolicySelectorQuery == null) {
             return KmmResult.success(requestedQueryResult)
         }
 
         return catching {
             intersectWithPolicies(
                 requestedResult = requestedQueryResult,
-                relyingPartyId = relyingPartyId
+                disclosurePolicySelectorQuery = disclosurePolicySelectorQuery
             )
         }
     }
@@ -374,16 +379,18 @@ class HolderAgent(
      */
     private fun intersectWithPolicies(
         requestedResult: DCQLQueryResult<StoreEntry>,
-        relyingPartyId: String
+        disclosurePolicySelectorQuery: DCQLQuery
     ): DCQLQueryResult<StoreEntry> {
         val filteredMatches = requestedResult.credentialQueryMatches.mapValues { (_, submissionOptions) ->
             submissionOptions.mapNotNull { option ->
                 val credential = option.credential
 
                 if (credential is StoreEntry.SdJwt) {
-                    val policyForRp = credential.disclosurePolicies?.find {
-                        it.relyingPartyId == relyingPartyId
-                    }
+                    // Find a policy whose attributes match the provided selector query
+                    val policyForRp = DisclosurePolicyValidator.findMatchingPolicy(
+                        policies = credential.disclosurePolicies,
+                        selectorQuery = disclosurePolicySelectorQuery
+                    )
 
                     if (policyForRp != null) {
                         val policyAdapter = DCQLQueryAdapter(policyForRp.policy)

@@ -119,11 +119,12 @@ interface Holder {
      * credentials and the claims credential set queries to be satisfied.
      *
      * @param filterById filter the list of possible credentials by the provided ID
+     * @param disclosurePolicySelectorQuery DCQL query to match against relying party attributes in policies
      */
     suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String? = null,
-        relyingPartyId: String? = null
+        disclosurePolicySelectorQuery: DCQLQuery? = null
     ): KmmResult<DCQLQueryResult<SubjectCredentialStore.StoreEntry>>
 }
 
