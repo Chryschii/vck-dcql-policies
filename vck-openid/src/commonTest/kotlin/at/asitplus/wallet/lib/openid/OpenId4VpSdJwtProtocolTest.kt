@@ -31,8 +31,11 @@ import at.asitplus.openid.dcql.DCQLClaimsQueryList
 import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
 import at.asitplus.openid.dcql.DCQLClaimsPathPointer
 import at.asitplus.wallet.lib.agent.CredentialToBeIssued
+import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributeValueFilter
+import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.data.RelyingPartyAttributes
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
 
 
 val OpenId4VpSdJwtProtocolTest by testSuite {
@@ -215,5 +218,57 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
         sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldBeNull()
+    }
+
+    "Filter-based policy selection matches correct policy" {
+        // Create two policies for different verifiers
+        val policy1 = DisclosurePolicy(
+            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier1.example.com"),
+            policy = DCQLQuery(
+                credentials = DCQLCredentialQueryList(
+                    DCQLSdJwtCredentialQuery(
+                        id = DCQLCredentialQueryIdentifier("policy1"),
+                        format = CredentialFormatEnum.DC_SD_JWT,
+                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
+                        ),
+                        claims = DCQLClaimsQueryList(
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val policy2 = DisclosurePolicy(
+            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier2.example.com"),
+            policy = DCQLQuery(
+                credentials = DCQLCredentialQueryList(
+                    DCQLSdJwtCredentialQuery(
+                        id = DCQLCredentialQueryIdentifier("policy2"),
+                        format = CredentialFormatEnum.DC_SD_JWT,
+                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
+                        ),
+                        claims = DCQLClaimsQueryList(
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val policies = listOf(policy1, policy2)
+
+        // Use filter to find policy for verifier1
+        val filter = AttributeValueFilter("client_id", "https://verifier1.example.com")
+        val matchedPolicy = DisclosurePolicyValidator.findMatchingPolicy(policies, filter)
+
+        matchedPolicy.shouldNotBeNull()
+        matchedPolicy.relyingPartyAttributes["client_id"] shouldBe "https://verifier1.example.com"
     }
 }
