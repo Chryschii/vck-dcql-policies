@@ -209,15 +209,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val authnResponse = holderOid4vp.createAuthnResponse(authnRequest).getOrThrow()
             .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
-        val result = verifierOid4vp.validateAuthnResponse(authnResponse.url)
-            .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
-
-        // Verify that only given_name disclosed & family_name blocked by policy
-        val sdJwtResult = result.validationResults.values.single()
-            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
-
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldBeNull()
+        verifierOid4vp.validateAuthnResponse(authnResponse.url)
+            .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
     }
 
     "Filter-based policy selection matches correct policy" {

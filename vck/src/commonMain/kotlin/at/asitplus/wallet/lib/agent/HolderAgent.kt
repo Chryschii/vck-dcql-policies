@@ -24,6 +24,7 @@ import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
 import at.asitplus.wallet.lib.data.CredentialToJsonConverter
+import at.asitplus.wallet.lib.data.DisclosurePolicy
 import at.asitplus.wallet.lib.data.KeyBindingJws
 import at.asitplus.wallet.lib.data.VerifiablePresentationJws
 import at.asitplus.wallet.lib.data.dif.PresentationExchangeInputEvaluator
@@ -351,6 +352,10 @@ class HolderAgent(
         pathAuthorizationValidator = pathAuthorizationValidator,
     )
 
+    /**
+     * Matches a DCQL query against the credential store with optional disclosure policy enforcement.
+     * When a filter is provided, only returns credentials where ALL requested claims are allowed by ALL matching policies.
+     */
     override suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String?,
@@ -376,7 +381,8 @@ class HolderAgent(
     }
 
     /**
-     * Intersects the requested DCQL result with the disclosure policies of the respective credential.
+     * Intersects the requested DCQL result with ALL disclosure policies matching the filter.
+     * Only returns claims if ALL requested claims are allowed by ALL matching policies.
      */
     private fun intersectWithPolicies(
         requestedResult: DCQLQueryResult<StoreEntry>,
@@ -387,31 +393,35 @@ class HolderAgent(
                 val credential = option.credential
 
                 if (credential is StoreEntry.SdJwt) {
-                    // Find a policy whose attributes match the provided filter
-                    val policyForRp = DisclosurePolicyValidator.findMatchingPolicy(
+                    // Find ALL policies whose attributes match the provided filter
+                    val matchingPolicies = DisclosurePolicyValidator.findMatchingPolicies(
                         policies = credential.disclosurePolicies,
                         filter = disclosurePolicyFilter
                     )
 
-                    if (policyForRp != null) {
-                        val policyAdapter = DCQLQueryAdapter(policyForRp.policy)
-                        val policyResult = policyAdapter.select(listOf(credential)).getOrNull()
-                            ?: return@mapNotNull null
+                    if (matchingPolicies.isEmpty()) {
+                        // No matching policies - return the option as-is (no restrictions)
+                        return@mapNotNull option
+                    }
 
-                        val allowedMatchingResult = policyResult.credentialQueryMatches.values
-                            .flatten()
-                            .firstOrNull()
-                            ?.matchingResult
-                            ?: return@mapNotNull null
+                    // Compute the intersection of allowed claims across ALL matching policies
+                    val combinedAllowedResult = combineAllowedClaims(
+                        matchingPolicies = matchingPolicies,
+                        credential = credential
+                    ) ?: return@mapNotNull null
 
-                        val intersectedMatchingResult = intersectMatchingResults(
-                            requested = option.matchingResult,
-                            allowed = allowedMatchingResult
-                        ) ?: return@mapNotNull null
+                    // Check if ALL requested claims are allowed by the combined policy
+                    val allRequestedClaimsAllowed = areAllRequestedClaimsAllowed(
+                        requested = option.matchingResult,
+                        allowed = combinedAllowedResult
+                    )
 
-                        option.copy(matchingResult = intersectedMatchingResult)
-                    } else {
+                    if (allRequestedClaimsAllowed) {
+                        // All requested claims are allowed - return the original request
                         option
+                    } else {
+                        // Not all requested claims are allowed - exclude this credential
+                        null
                     }
                 } else {
                     option
@@ -426,42 +436,104 @@ class HolderAgent(
     }
 
     /**
+     * Combines allowed claims by intersecting ALL matching policies.
+     * Returns the most restrictive set of allowed claims (intersection of all policies).
+     */
+    private fun combineAllowedClaims(
+        matchingPolicies: List<DisclosurePolicy>,
+        credential: StoreEntry.SdJwt
+    ): DCQLCredentialQueryMatchingResult? {
+        var combinedResult: DCQLCredentialQueryMatchingResult? = null
+
+        for (policy in matchingPolicies) {
+            val policyAdapter = DCQLQueryAdapter(policy.policy)
+            val policyResult = policyAdapter.select(listOf(credential)).getOrNull()
+                ?: return null
+
+            val policyMatchingResult = policyResult.credentialQueryMatches.values
+                .flatten()
+                .firstOrNull()
+                ?.matchingResult
+                ?: return null
+
+            combinedResult = if (combinedResult == null) {
+                policyMatchingResult
+            } else {
+                intersectMatchingResults(combinedResult, policyMatchingResult)
+                    ?: return null
+            }
+        }
+        return combinedResult
+    }
+
+    /**
+     * Checks if ALL requested claims are allowed by the combined policy result.
+     * Returns true only if every requested claim is present in the allowed set.
+     */
+    private fun areAllRequestedClaimsAllowed(
+        requested: DCQLCredentialQueryMatchingResult,
+        allowed: DCQLCredentialQueryMatchingResult
+    ): Boolean {
+        return when (requested) {
+            // If all claims are requested, check if all are allowed
+            is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
+                allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
+            }
+
+            // If specific claims are requested, check if all are in the allowed set
+            is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                when (allowed) {
+                    is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> true
+
+                    is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                        requested.claimsQueryResults.all { requestedClaim ->
+                            allowed.claimsQueryResults.any { allowedClaim ->
+                                claimsMatch(requestedClaim, allowedClaim)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Intersects two DCQLCredentialQueryMatchingResult objects.
      * Returns only the claims that are present in BOTH results.
      */
     private fun intersectMatchingResults(
-        requested: DCQLCredentialQueryMatchingResult,
-        allowed: DCQLCredentialQueryMatchingResult
+        first: DCQLCredentialQueryMatchingResult,
+        second: DCQLCredentialQueryMatchingResult
     ): DCQLCredentialQueryMatchingResult? {
-        return when (requested) {
-            // If both request all claims, intersection is all claims
+        return when (first) {
+            // If both allow all claims, intersection is all claims
             is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
-                if allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
+                if second is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
                     DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
             }
 
-            // If request is all but policy is specific, return the policy's allowed claims
+            // If first allows all but second is specific, return second's claims
             is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
-                if allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
-                    allowed
+                if second is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                    second
             }
 
-            // If request is specific but policy allows all, return the request
+            // If first is specific but second allows all, return first's claims
             is DCQLCredentialQueryMatchingResult.ClaimsQueryResults
-                if allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                    requested
+                if second is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
+                    first
             }
 
             // Both are specific: intersect the claim query results
             is DCQLCredentialQueryMatchingResult.ClaimsQueryResults
-                if allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
+                if second is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
                     val intersection = intersectClaimsQueryResults(
-                        requested.claimsQueryResults,
-                        allowed.claimsQueryResults
+                        first.claimsQueryResults,
+                        second.claimsQueryResults
                     )
 
                     if (intersection.isEmpty()) {
-                        null // No common claim
+                        null // No common claims
                     } else {
                         DCQLCredentialQueryMatchingResult.ClaimsQueryResults(intersection)
                     }
@@ -475,12 +547,12 @@ class HolderAgent(
      * For JSON-based credentials, keeps only claims with matching paths.
      */
     private fun intersectClaimsQueryResults(
-        requested: List<DCQLClaimsQueryResult>,
-        allowed: List<DCQLClaimsQueryResult>
+        first: List<DCQLClaimsQueryResult>,
+        second: List<DCQLClaimsQueryResult>
     ): List<DCQLClaimsQueryResult> {
-        return requested.filter { requestedClaim ->
-            allowed.any { allowedClaim ->
-                claimsMatch(requestedClaim, allowedClaim)
+        return first.filter { firstClaim ->
+            second.any { secondClaim ->
+                claimsMatch(firstClaim, secondClaim)
             }
         }
     }
@@ -490,14 +562,14 @@ class HolderAgent(
      * Used for SD-JWT disclosure policy enforcement (JSON-based claims only).
      */
     private fun claimsMatch(
-        claim1: DCQLClaimsQueryResult,
-        claim2: DCQLClaimsQueryResult
+        first: DCQLClaimsQueryResult,
+        second: DCQLClaimsQueryResult
     ): Boolean {
-        if (claim1 !is DCQLClaimsQueryResult.JsonResult) return false
-        if (claim2 !is DCQLClaimsQueryResult.JsonResult) return false
+        if (first !is DCQLClaimsQueryResult.JsonResult) return false
+        if (second !is DCQLClaimsQueryResult.JsonResult) return false
 
         // Compare paths for SD-JWT
-        return claim1.nodeList.toString() == claim2.nodeList.toString()
+        return first.nodeList.toString() == second.nodeList.toString()
     }
 
     private fun PresentationSubmission.Companion.fromMatches(
