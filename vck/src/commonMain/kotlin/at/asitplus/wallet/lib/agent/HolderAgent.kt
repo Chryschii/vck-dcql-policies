@@ -19,6 +19,7 @@ import at.asitplus.signum.indispensable.cosef.CoseKey
 import at.asitplus.signum.indispensable.cosef.toCoseKey
 import at.asitplus.signum.indispensable.pki.X509Certificate
 import at.asitplus.wallet.lib.agent.SubjectCredentialStore.StoreEntry
+import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyFilter
 import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
@@ -252,8 +253,8 @@ class HolderAgent(
         credentialPresentation: CredentialPresentation.DCQLPresentation,
     ): KmmResult<PresentationResponseParameters.DCQLParameters> = catching {
         val dcqlQuery = credentialPresentation.presentationRequest.dcqlQuery
-        val disclosurePolicySelectorQuery = request.clientId?.let { clientId ->
-            DisclosurePolicyValidator.createDisclosurePolicySelectorQuery(clientId)
+        val clientIdFilter = request.clientId?.let { clientId ->
+            DisclosurePolicyValidator.createClientIdFilter(clientId)
         }
 
         val requestedCredentialSetQueries =
@@ -262,7 +263,7 @@ class HolderAgent(
             ?: matchDCQLQueryAgainstCredentialStore(
                 dcqlQuery = dcqlQuery,
                 filterById = null,
-                disclosurePolicySelectorQuery = disclosurePolicySelectorQuery
+                disclosurePolicyFilter = clientIdFilter
             ).getOrThrow().toDefaultSubmission().getOrThrow()
 
         DCQLQuery.Procedures.isSatisfactoryCredentialSubmission(
@@ -353,7 +354,7 @@ class HolderAgent(
     override suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String?,
-        disclosurePolicySelectorQuery: DCQLQuery?,
+        disclosurePolicyFilter: DisclosurePolicyFilter?,
     ): KmmResult<DCQLQueryResult<StoreEntry>> {
         val candidates = getValidCredentialsByPriority(filterById)
             ?: throw PresentationException("Credentials could not be retrieved from the store")
@@ -362,14 +363,14 @@ class HolderAgent(
             return KmmResult.failure(it)
         }
 
-        if (disclosurePolicySelectorQuery == null) {
+        if (disclosurePolicyFilter == null) {
             return KmmResult.success(requestedQueryResult)
         }
 
         return catching {
             intersectWithPolicies(
                 requestedResult = requestedQueryResult,
-                disclosurePolicySelectorQuery = disclosurePolicySelectorQuery
+                disclosurePolicyFilter = disclosurePolicyFilter
             )
         }
     }
@@ -379,17 +380,17 @@ class HolderAgent(
      */
     private fun intersectWithPolicies(
         requestedResult: DCQLQueryResult<StoreEntry>,
-        disclosurePolicySelectorQuery: DCQLQuery
+        disclosurePolicyFilter: DisclosurePolicyFilter
     ): DCQLQueryResult<StoreEntry> {
         val filteredMatches = requestedResult.credentialQueryMatches.mapValues { (_, submissionOptions) ->
             submissionOptions.mapNotNull { option ->
                 val credential = option.credential
 
                 if (credential is StoreEntry.SdJwt) {
-                    // Find a policy whose attributes match the provided selector query
+                    // Find a policy whose attributes match the provided filter
                     val policyForRp = DisclosurePolicyValidator.findMatchingPolicy(
                         policies = credential.disclosurePolicies,
-                        selectorQuery = disclosurePolicySelectorQuery
+                        filter = disclosurePolicyFilter
                     )
 
                     if (policyForRp != null) {

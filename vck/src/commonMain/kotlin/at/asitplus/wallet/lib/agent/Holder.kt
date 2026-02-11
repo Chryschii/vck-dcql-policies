@@ -10,6 +10,7 @@ import at.asitplus.jsonpath.core.NormalizedJsonPath
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLQueryResult
 import at.asitplus.signum.indispensable.josef.JwsSigned
+import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyFilter
 import at.asitplus.wallet.lib.data.ConstantIndex
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
@@ -124,7 +125,7 @@ interface Holder {
     suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String? = null,
-        disclosurePolicySelectorQuery: DCQLQuery? = null
+        disclosurePolicyFilter: DisclosurePolicyFilter? = null
     ): KmmResult<DCQLQueryResult<SubjectCredentialStore.StoreEntry>>
 }
 

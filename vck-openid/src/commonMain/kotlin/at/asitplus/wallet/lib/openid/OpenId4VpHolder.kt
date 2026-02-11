@@ -384,9 +384,9 @@ class OpenId4VpHolder(
     ) = catchingUnwrapped {
         when (val it = preparationState.credentialPresentationRequest) {
             is CredentialPresentationRequest.DCQLRequest -> {
-                // Create a selector query for policies matching this relying party's ID
-                val relyingPartySelectorQuery = preparationState.request.parameters.clientId?.let { clientId ->
-                    DisclosurePolicyValidator.createDisclosurePolicySelectorQuery(clientId)
+                // Create a filter for policies matching this relying party's ID
+                val relyingPartyFilter = preparationState.request.parameters.clientId?.let { clientId ->
+                    DisclosurePolicyValidator.createClientIdFilter(clientId)
                 }
 
                 DCQLMatchingResult(
@@ -394,7 +394,7 @@ class OpenId4VpHolder(
                     dcqlQueryResult = holder.matchDCQLQueryAgainstCredentialStore(
                         dcqlQuery = it.dcqlQuery,
                         filterById = preparationState.request.credentialId(),
-                        disclosurePolicySelectorQuery = relyingPartySelectorQuery
+                        disclosurePolicyFilter = relyingPartyFilter
                     ).getOrThrow()
                 )
             }
