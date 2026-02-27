@@ -49,7 +49,7 @@ object DisclosurePolicyValidator {
      * Creates a filter for matching policies by client ID.
      *
      * @param clientId The client ID to match
-     * @param clientIdKey The attribute key for client ID (default: "client_id")
+     * @param clientIdKey The metadata field key for client ID (default: "client_id")
      * @return A filter that matches policies with the specified client ID
      */
     fun createClientIdFilter(

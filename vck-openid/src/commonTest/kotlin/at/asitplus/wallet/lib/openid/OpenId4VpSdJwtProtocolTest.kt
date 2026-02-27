@@ -36,8 +36,7 @@ import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributePredicateFilter
 import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributeValueFilter
 import at.asitplus.wallet.lib.agent.validation.sdJwt.CompositeDisclosurePolicyFilter
 import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
-import at.asitplus.wallet.lib.data.RelyingPartyAttributes
-import io.kotest.matchers.nulls.shouldBeNull
+import at.asitplus.wallet.lib.data.RelyingPartyMetadata
 import io.kotest.matchers.shouldBe
 
 
@@ -151,7 +150,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy which allows only given_name for this verifier
         val policy = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -219,7 +218,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
     "Filter-based policy selection matches correct policy" {
         // Create two policies for different verifiers
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier1.example.com"),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier1.example.com"),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -239,7 +238,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier2.example.com"),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier2.example.com"),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -265,7 +264,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val matchedPolicy = DisclosurePolicyValidator.findMatchingPolicy(policies, filter)
 
         matchedPolicy.shouldNotBeNull()
-        matchedPolicy.relyingPartyAttributes["client_id"] shouldBe "https://verifier1.example.com"
+        matchedPolicy.relyingPartyMetadata["client_id"] shouldBe "https://verifier1.example.com"
     }
 
     "Multiple policies allow requested claims" {
@@ -281,7 +280,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 1: Allows given_name
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -302,7 +301,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 2: Also allows given_name (redundant but valid)
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -379,7 +378,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 1: Allows only given_name
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -400,7 +399,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 2: Allows only family_name (conflicts with policy1)
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -472,7 +471,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy for a different verifier
         val policy = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://different-verifier.example.com"),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://different-verifier.example.com"),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -543,7 +542,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
     "Composite filter with multiple attributes" {
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromMap(
+            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
                 mapOf(
                     "client_id" to "https://verifier1.example.com",
                     "purpose" to "authentication"
@@ -568,7 +567,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromMap(
+            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
                 mapOf(
                     "client_id" to "https://verifier1.example.com",
                     "purpose" to "payment"
@@ -606,12 +605,12 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val matchedPolicy = DisclosurePolicyValidator.findMatchingPolicy(policies, compositeFilter)
 
         matchedPolicy.shouldNotBeNull()
-        matchedPolicy.relyingPartyAttributes["purpose"] shouldBe "authentication"
+        matchedPolicy.relyingPartyMetadata["purpose"] shouldBe "authentication"
     }
 
     "AttributeInSetFilter matches multiple allowed values" {
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier-prod.example.com"),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier-prod.example.com"),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -631,7 +630,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId("https://verifier-staging.example.com"),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier-staging.example.com"),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -664,7 +663,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val matchedPolicies = DisclosurePolicyValidator.findMatchingPolicies(policies, inSetFilter)
 
         matchedPolicies.size shouldBe 1
-        matchedPolicies.first().relyingPartyAttributes["client_id"] shouldBe "https://verifier-prod.example.com"
+        matchedPolicies.first().relyingPartyMetadata["client_id"] shouldBe "https://verifier-prod.example.com"
     }
 
     "Three policies with different restrictions - most restrictive wins" {
@@ -680,7 +679,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 1: allows given_name and family_name and date_of_birth
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -707,7 +706,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 2: allows given_name and date_of_birth
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -731,7 +730,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 3: allows only date_of_birth
         val policy3 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             policy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -819,7 +818,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
     "AttributePredicateFilter with custom matching logic" {
         val policy1 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromMap(
+            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
                 mapOf(
                     "client_id" to "https://verifier.example.com",
                     "trust_level" to "high"
@@ -847,7 +846,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policy2 = DisclosurePolicy(
-            relyingPartyAttributes = RelyingPartyAttributes.fromMap(
+            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
                 mapOf(
                     "client_id" to "https://verifier.example.com",
                     "trust_level" to "low"
@@ -887,6 +886,6 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val matchedPolicies = DisclosurePolicyValidator.findMatchingPolicies(policies, predicateFilter)
 
         matchedPolicies.size shouldBe 1
-        matchedPolicies.first().relyingPartyAttributes["trust_level"] shouldBe "high"
+        matchedPolicies.first().relyingPartyMetadata["trust_level"] shouldBe "high"
     }
 }

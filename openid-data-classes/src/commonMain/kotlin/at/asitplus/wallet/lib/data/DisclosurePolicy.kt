@@ -7,13 +7,13 @@ import kotlinx.serialization.Serializable
 /**
  * Represents an embedded disclosure policy for a credential.
  *
- * @property relyingPartyAttributes Attributes identifying which relying party this policy applies to.
- * @property policy A DCQL query specifying which credentials and claims may be disclosed.
+ * @property relyingPartyMetadata Metadata identifying the relying party this policy applies to
+ * @property policy A DCQL query specifying which claims may be disclosed
  */
 @Serializable
 data class DisclosurePolicy(
-    @SerialName("relyingPartyAttributes")
-    val relyingPartyAttributes: RelyingPartyAttributes,
+    @SerialName("relying_party_metadata")
+    val relyingPartyMetadata: RelyingPartyMetadata,
     @SerialName("policy")
     val policy: DCQLQuery,
 )
