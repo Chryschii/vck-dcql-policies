@@ -444,9 +444,19 @@ class HolderAgent(
             }
         }.filterValues { it.isNotEmpty() }
 
+        // Recompute satisfiable set queries against the post-policy-enforcement state,
+        // dropping any that reference a credential query with no remaining matches.
+        val satisfiableSetQueries = requestedResult.satisfiableCredentialSetQueries.filter { setQuery ->
+            setQuery.options.any { option ->
+                option.all { credentialQueryId ->
+                    filteredMatches[credentialQueryId]?.isNotEmpty() == true
+                }
+            }
+        }
+
         return DCQLQueryResult(
             credentialQueryMatches = filteredMatches,
-            satisfiableCredentialSetQueries = requestedResult.satisfiableCredentialSetQueries
+            satisfiableCredentialSetQueries = satisfiableSetQueries
         )
     }
 
@@ -544,19 +554,15 @@ class HolderAgent(
         second: DCQLCredentialQueryMatchingResult
     ): DCQLCredentialQueryMatchingResult {
         return when {
-            first is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                first
-            }
+            first is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> first
 
-            second is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                second
-            }
+            second is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> second
 
             first is DCQLCredentialQueryMatchingResult.ClaimsQueryResults &&
                     second is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
                 DCQLCredentialQueryMatchingResult.ClaimsQueryResults(
-                    (first.claimsQueryResults + second.claimsQueryResults).distinctBy {
-                        (it as? DCQLClaimsQueryResult.JsonResult)?.nodeList?.toString()
+                    (first.claimsQueryResults + second.claimsQueryResults).distinctBy { claim ->
+                        (claim as? DCQLClaimsQueryResult.JsonResult)?.nodeList?.map { it.toString() }
                     }
                 )
             }
@@ -574,13 +580,9 @@ class HolderAgent(
         denied: DCQLCredentialQueryMatchingResult
     ): DCQLCredentialQueryMatchingResult? {
         return when {
-            denied is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                null
-            }
+            denied is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> null
 
-            allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                allowed
-            }
+            allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> allowed
 
             allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults &&
                     denied is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
@@ -608,7 +610,10 @@ class HolderAgent(
         if (second !is DCQLClaimsQueryResult.JsonResult) return false
 
         // Compare paths for SD-JWT
-        return first.nodeList.toString() == second.nodeList.toString()
+        return first.nodeList.size == second.nodeList.size &&
+                first.nodeList.zip(second.nodeList).all { (a, b) ->
+                    a.toString() == b.toString()
+                }
     }
 
     private fun PresentationSubmission.Companion.fromMatches(

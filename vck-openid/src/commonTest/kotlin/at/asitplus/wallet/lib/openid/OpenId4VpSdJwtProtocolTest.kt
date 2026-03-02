@@ -235,7 +235,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
     }
 
     "Policy selection matches correct policy by client_id" {
-        // Creates two policies for different verifiers
+        // Creates two policies for different verifiers and checks if only one gets selected
         val policy1 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier1.example.com"),
             allowPolicy = DCQLQuery(
@@ -760,7 +760,6 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
         // Union of all three allowPolicies = {given_name, family_name, date_of_birth}
-        // Request given_name - present in the union, so this must succeed
         val authnRequest1 = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(

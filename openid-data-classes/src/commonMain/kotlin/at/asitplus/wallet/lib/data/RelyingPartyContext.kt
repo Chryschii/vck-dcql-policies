@@ -4,6 +4,7 @@ import at.asitplus.openid.AuthenticationRequestParameters
 import at.asitplus.openid.CredentialFormatEnum
 import at.asitplus.openid.RelyingPartyMetadata
 import at.asitplus.openid.dcql.DCQLCredentialClaimStructure
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -63,7 +64,7 @@ data class RelyingPartyContext(
 
                 // Origins
                 request.expectedOrigins?.let { origins ->
-                    put("expected_origins", origins.joinToString(","))
+                    put("expected_origins", JsonArray(origins.map { JsonPrimitive(it) }))
                 }
 
                 // ------------------------------
@@ -72,18 +73,18 @@ data class RelyingPartyContext(
                 request.clientMetadata?.let { meta ->
                     meta.clientIdScheme?.let { put("metadata_client_id_scheme", it.toString()) }
                     meta.redirectUris?.let { uris ->
-                        put("redirect_uris", uris.joinToString(","))
+                        put("redirect_uris", JsonArray(uris.map { JsonPrimitive(it) }))
                     }
                     meta.subjectSyntaxTypesSupported?.let { types ->
-                        put("subject_syntax_types_supported", types.joinToString(","))
+                        put("subject_syntax_types_supported", JsonArray(types.map { JsonPrimitive(it) }))
                     }
                     meta.vpFormatsSupported?.let { formats ->
                         val formatNames = buildList {
-                            if (formats.msoMdoc != null) add(CredentialFormatEnum.MSO_MDOC)
-                            if (formats.dcSdJwt != null) add(CredentialFormatEnum.DC_SD_JWT)
-                            if (formats.vcJwt != null) add(CredentialFormatEnum.JWT_VC)
-                        }.joinToString(",")
-                        if (formatNames.isNotEmpty()) put("vp_formats_supported", formatNames)
+                            if (formats.msoMdoc != null) add(CredentialFormatEnum.MSO_MDOC.toString())
+                            if (formats.dcSdJwt != null) add(CredentialFormatEnum.DC_SD_JWT.toString())
+                            if (formats.vcJwt != null) add(CredentialFormatEnum.JWT_VC.toString())
+                        }
+                        if (formatNames.isNotEmpty()) put("vp_formats_supported", JsonArray(formatNames.map { JsonPrimitive(it) }))
                     }
                     meta.idTokenSignedResponseAlgString?.let {
                         put("id_token_signed_response_alg", it)
