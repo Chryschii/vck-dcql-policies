@@ -1,5 +1,6 @@
 package at.asitplus.wallet.lib.openid
 
+import at.asitplus.openid.AuthenticationRequestParameters
 import at.asitplus.openid.CredentialFormatEnum
 import at.asitplus.testballoon.invoke
 import at.asitplus.wallet.eupid.EuPidScheme
@@ -30,15 +31,33 @@ import at.asitplus.openid.dcql.DCQLSdJwtCredentialMetadataAndValidityConstraints
 import at.asitplus.openid.dcql.DCQLClaimsQueryList
 import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
 import at.asitplus.openid.dcql.DCQLClaimsPathPointer
+import at.asitplus.openid.dcql.DCQLExpectedClaimValue
 import at.asitplus.wallet.lib.agent.CredentialToBeIssued
-import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributeInSetFilter
-import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributePredicateFilter
-import at.asitplus.wallet.lib.agent.validation.sdJwt.AttributeValueFilter
-import at.asitplus.wallet.lib.agent.validation.sdJwt.CompositeDisclosurePolicyFilter
 import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
-import at.asitplus.wallet.lib.data.RelyingPartyMetadata
+import at.asitplus.wallet.lib.data.RelyingPartyContext
 import io.kotest.matchers.shouldBe
 
+private object RelyingPartyQueryBuilder {
+    fun forClientId(clientId: String): DCQLQuery {
+        return DCQLQuery(
+            credentials = DCQLCredentialQueryList(
+                DCQLSdJwtCredentialQuery(
+                    id = DCQLCredentialQueryIdentifier("rp_filter"),
+                    format = CredentialFormatEnum.DC_SD_JWT,
+                    meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                        vctValues = listOf(RelyingPartyContext.TYPE)
+                    ),
+                    claims = DCQLClaimsQueryList(
+                        DCQLJsonClaimsQuery(
+                            path = DCQLClaimsPathPointer("client_id"),
+                            values = listOf(DCQLExpectedClaimValue.StringValue(clientId))
+                        )
+                    )
+                )
+            )
+        )
+    }
+}
 
 val OpenId4VpSdJwtProtocolTest by testSuite {
 
@@ -150,8 +169,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy which allows only given_name for this verifier
         val policy = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy"),
@@ -191,7 +210,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
-        // Verifier requests BOTH claims
+        // Verifier requests BOTH claims - policy only allows given_name, so this must fail
         val authnRequest = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
@@ -215,11 +234,11 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
     }
 
-    "Filter-based policy selection matches correct policy" {
-        // Create two policies for different verifiers
+    "Policy selection matches correct policy by client_id" {
+        // Creates two policies for different verifiers
         val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier1.example.com"),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier1.example.com"),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -238,8 +257,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier2.example.com"),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier2.example.com"),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -258,13 +277,13 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         val policies = listOf(policy1, policy2)
+        val context = RelyingPartyContext.fromRequest(
+            AuthenticationRequestParameters(clientId = "https://verifier1.example.com")
+        )
+        val matched = DisclosurePolicyValidator.findApplicablePolicies(policies, context)
 
-        // Use filter to find policy for verifier1
-        val filter = AttributeValueFilter("client_id", "https://verifier1.example.com")
-        val matchedPolicy = DisclosurePolicyValidator.findMatchingPolicy(policies, filter)
-
-        matchedPolicy.shouldNotBeNull()
-        matchedPolicy.relyingPartyMetadata["client_id"] shouldBe "https://verifier1.example.com"
+        matched.size shouldBe 1
+        matched.first() shouldBe policy1
     }
 
     "Multiple policies allow requested claims" {
@@ -278,10 +297,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             clientIdScheme = ClientIdScheme.RedirectUri(clientId)
         )
 
-        // Policy 1: Allows given_name
+        // Policy 1: allows given_name
         val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -299,10 +318,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             )
         )
 
-        // Policy 2: Also allows given_name (redundant but valid)
+        // Policy 2: also allows given_name
         val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -365,7 +384,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
     }
 
-    "Multiple policies with conflicting restrictions block disclosure" {
+    "Multiple policies with non-overlapping allow sets permit union of claims" {
         val holderAgent = HolderAgent(holderKeyMaterial)
         val holderOid4vp = OpenId4VpHolder(
             holder = holderAgent,
@@ -376,10 +395,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             clientIdScheme = ClientIdScheme.RedirectUri(clientId)
         )
 
-        // Policy 1: Allows only given_name
+        // Policy 1: allows only given_name
         val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -397,10 +416,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             )
         )
 
-        // Policy 2: Allows only family_name (conflicts with policy1)
+        // Policy 2: allows only family_name
         val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -438,6 +457,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
+        // Request given_name - allowed by policy1, so union permits it
         val authnRequest = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
@@ -445,6 +465,102 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
                         AtomicAttribute2023,
                         SD_JWT,
                         setOf(AtomicAttribute2023.CLAIM_GIVEN_NAME)
+                    )
+                ),
+                presentationMechanism = PresentationMechanismEnum.DCQL
+            ),
+            OpenId4VpVerifier.CreationOptions.Query(walletUrl)
+        ).getOrThrow().url
+
+        val authnResponse = holderOid4vp.createAuthnResponse(authnRequest).getOrThrow()
+            .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
+        val result = verifierOid4vp.validateAuthnResponse(authnResponse.url)
+            .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
+
+        val sdJwtResult = result.validationResults.values.single()
+            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
+        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
+    }
+
+    "Deny policy blocks claim even when allow policy permits it" {
+        val holderAgent = HolderAgent(holderKeyMaterial)
+        val holderOid4vp = OpenId4VpHolder(
+            holder = holderAgent,
+            randomSource = RandomSource.Default,
+        )
+        val verifierOid4vp = OpenId4VpVerifier(
+            keyMaterial = verifierKeyMaterial,
+            clientIdScheme = ClientIdScheme.RedirectUri(clientId)
+        )
+
+        // Allow given_name and family_name, but explicitly deny family_name
+        val policy = DisclosurePolicy(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
+                credentials = DCQLCredentialQueryList(
+                    DCQLSdJwtCredentialQuery(
+                        id = DCQLCredentialQueryIdentifier("allow"),
+                        format = CredentialFormatEnum.DC_SD_JWT,
+                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
+                        ),
+                        claims = DCQLClaimsQueryList(
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
+                            ),
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
+                            )
+                        )
+                    )
+                )
+            ),
+            denyPolicy = DCQLQuery(
+                credentials = DCQLCredentialQueryList(
+                    DCQLSdJwtCredentialQuery(
+                        id = DCQLCredentialQueryIdentifier("deny"),
+                        format = CredentialFormatEnum.DC_SD_JWT,
+                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
+                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
+                        ),
+                        claims = DCQLClaimsQueryList(
+                            DCQLJsonClaimsQuery(
+                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val credentialToBeIssued = DummyCredentialDataProvider.getCredential(
+            holderKeyMaterial.publicKey,
+            AtomicAttribute2023,
+            SD_JWT
+        ).getOrThrow()
+
+        val credentialWithPolicy = when (credentialToBeIssued) {
+            is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
+                disclosurePolicies = listOf(policy)
+            )
+            else -> error("Expected VcSd credential")
+        }
+
+        val credential = IssuerAgent(
+            identifier = "https://issuer.example.com/".toUri(),
+            randomSource = RandomSource.Default
+        ).issueCredential(credentialWithPolicy).getOrThrow()
+
+        holderAgent.storeCredential(credential.toStoreCredentialInput())
+
+        // Request family_name - allowed by allowPolicy but denied by denyPolicy
+        val authnRequest = verifierOid4vp.createAuthnRequest(
+            RequestOptions(
+                credentials = setOf(
+                    RequestOptionsCredential(
+                        AtomicAttribute2023,
+                        SD_JWT,
+                        setOf(AtomicAttribute2023.CLAIM_FAMILY_NAME)
                     )
                 ),
                 presentationMechanism = PresentationMechanismEnum.DCQL
@@ -471,8 +587,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy for a different verifier
         val policy = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://different-verifier.example.com"),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://different-verifier.example.com"),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy"),
@@ -540,133 +656,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldNotBeNull()
     }
 
-    "Composite filter with multiple attributes" {
-        val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
-                mapOf(
-                    "client_id" to "https://verifier1.example.com",
-                    "purpose" to "authentication"
-                )
-            ),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy1"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
-                mapOf(
-                    "client_id" to "https://verifier1.example.com",
-                    "purpose" to "payment"
-                )
-            ),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy2"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policies = listOf(policy1, policy2)
-
-        // Filter for client_id AND purpose
-        val compositeFilter = CompositeDisclosurePolicyFilter(
-            filters = listOf(
-                AttributeValueFilter("client_id", "https://verifier1.example.com"),
-                AttributeValueFilter("purpose", "authentication")
-            ),
-            operator = CompositeDisclosurePolicyFilter.LogicalOperator.AND
-        )
-
-        val matchedPolicy = DisclosurePolicyValidator.findMatchingPolicy(policies, compositeFilter)
-
-        matchedPolicy.shouldNotBeNull()
-        matchedPolicy.relyingPartyMetadata["purpose"] shouldBe "authentication"
-    }
-
-    "AttributeInSetFilter matches multiple allowed values" {
-        val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier-prod.example.com"),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy1"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId("https://verifier-staging.example.com"),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy2"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policies = listOf(policy1, policy2)
-
-        // Filter for multiple allowed client IDs
-        val inSetFilter = AttributeInSetFilter(
-            "client_id",
-            setOf(
-                "https://verifier-prod.example.com",
-                "https://verifier-dev.example.com"
-            )
-        )
-
-        val matchedPolicies = DisclosurePolicyValidator.findMatchingPolicies(policies, inSetFilter)
-
-        matchedPolicies.size shouldBe 1
-        matchedPolicies.first().relyingPartyMetadata["client_id"] shouldBe "https://verifier-prod.example.com"
-    }
-
-    "Three policies with different restrictions - most restrictive wins" {
+    "Three policies with different allow sets - union permits superset" {
         val holderAgent = HolderAgent(holderKeyMaterial)
         val holderOid4vp = OpenId4VpHolder(
             holder = holderAgent,
@@ -677,10 +667,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             clientIdScheme = ClientIdScheme.RedirectUri(clientId)
         )
 
-        // Policy 1: allows given_name and family_name and date_of_birth
+        // Policy 1: allows given_name, family_name, date_of_birth
         val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -704,10 +694,10 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             )
         )
 
-        // Policy 2: allows given_name and date_of_birth
+        // Policy 2: allows given_name, date_of_birth
         val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -730,8 +720,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         // Policy 3: allows only date_of_birth
         val policy3 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            policy = DCQLQuery(
+            relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
+            allowPolicy = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy3"),
@@ -769,7 +759,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
-        // First request: Ask for given_name (allowed by policy1 and policy2, but not policy3)
+        // Union of all three allowPolicies = {given_name, family_name, date_of_birth}
+        // Request given_name - present in the union, so this must succeed
         val authnRequest1 = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
@@ -786,19 +777,21 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val authnResponse1 = holderOid4vp.createAuthnResponse(authnRequest1).getOrThrow()
             .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
-        verifierOid4vp.validateAuthnResponse(authnResponse1.url)
-            .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
+        val result1 = verifierOid4vp.validateAuthnResponse(authnResponse1.url)
+            .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
 
-        // Second request: Ask for date_of_birth (only what the most restrictive policy allows)
+        result1.validationResults.values.single()
+            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
+            .reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
+
+        // Request date_of_birth - present in all three policies
         val authnRequest2 = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
                     RequestOptionsCredential(
                         AtomicAttribute2023,
                         SD_JWT,
-                        setOf(
-                            AtomicAttribute2023.CLAIM_DATE_OF_BIRTH
-                        )
+                        setOf(AtomicAttribute2023.CLAIM_DATE_OF_BIRTH)
                     )
                 ),
                 presentationMechanism = PresentationMechanismEnum.DCQL
@@ -808,84 +801,11 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val authnResponse2 = holderOid4vp.createAuthnResponse(authnRequest2).getOrThrow()
             .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
-        val result = verifierOid4vp.validateAuthnResponse(authnResponse2.url)
+        val result2 = verifierOid4vp.validateAuthnResponse(authnResponse2.url)
             .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
 
-        val sdJwtResult = result.validationResults.values.single()
+        result2.validationResults.values.single()
             .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_DATE_OF_BIRTH].shouldNotBeNull()
-    }
-
-    "AttributePredicateFilter with custom matching logic" {
-        val policy1 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
-                mapOf(
-                    "client_id" to "https://verifier.example.com",
-                    "trust_level" to "high"
-                )
-            ),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy1"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
-                            ),
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_FAMILY_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policy2 = DisclosurePolicy(
-            relyingPartyMetadata = RelyingPartyMetadata.fromMap(
-                mapOf(
-                    "client_id" to "https://verifier.example.com",
-                    "trust_level" to "low"
-                )
-            ),
-            policy = DCQLQuery(
-                credentials = DCQLCredentialQueryList(
-                    DCQLSdJwtCredentialQuery(
-                        id = DCQLCredentialQueryIdentifier("policy2"),
-                        format = CredentialFormatEnum.DC_SD_JWT,
-                        meta = DCQLSdJwtCredentialMetadataAndValidityConstraints(
-                            vctValues = listOf(AtomicAttribute2023.sdJwtType)
-                        ),
-                        claims = DCQLClaimsQueryList(
-                            DCQLJsonClaimsQuery(
-                                path = DCQLClaimsPathPointer(AtomicAttribute2023.CLAIM_GIVEN_NAME)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        val policies = listOf(policy1, policy2)
-
-        // Use predicate filter to match policies with high trust level
-        val predicateFilter = CompositeDisclosurePolicyFilter(
-            filters = listOf(
-                AttributeValueFilter("client_id", "https://verifier.example.com"),
-                AttributePredicateFilter("trust_level") { value ->
-                    value == "high" || value == "medium"
-                }
-            ),
-            operator = CompositeDisclosurePolicyFilter.LogicalOperator.AND
-        )
-
-        val matchedPolicies = DisclosurePolicyValidator.findMatchingPolicies(policies, predicateFilter)
-
-        matchedPolicies.size shouldBe 1
-        matchedPolicies.first().relyingPartyMetadata["trust_level"] shouldBe "high"
+            .reconstructed[AtomicAttribute2023.CLAIM_DATE_OF_BIRTH].shouldNotBeNull()
     }
 }

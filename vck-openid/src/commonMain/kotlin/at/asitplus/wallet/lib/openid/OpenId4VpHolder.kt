@@ -57,6 +57,7 @@ import at.asitplus.wallet.lib.cbor.SignCoseDetachedFun
 import at.asitplus.wallet.lib.cbor.SignCoseFun
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
+import at.asitplus.wallet.lib.data.RelyingPartyContext
 import at.asitplus.wallet.lib.data.vckJsonSerializer
 import at.asitplus.wallet.lib.jws.EncryptJwe
 import at.asitplus.wallet.lib.jws.EncryptJweFun
@@ -384,17 +385,15 @@ class OpenId4VpHolder(
     ) = catchingUnwrapped {
         when (val it = preparationState.credentialPresentationRequest) {
             is CredentialPresentationRequest.DCQLRequest -> {
-                // Create a filter for policies matching this relying party's ID
-                val relyingPartyFilter = preparationState.request.parameters.clientId?.let { clientId ->
-                    DisclosurePolicyValidator.createClientIdFilter(clientId)
-                }
+                val requestParameters = preparationState.request.parameters
+                val relyingPartyContext = RelyingPartyContext.fromRequest(requestParameters)
 
                 DCQLMatchingResult(
                     presentationRequest = it,
                     dcqlQueryResult = holder.matchDCQLQueryAgainstCredentialStore(
                         dcqlQuery = it.dcqlQuery,
                         filterById = preparationState.request.credentialId(),
-                        disclosurePolicyFilter = relyingPartyFilter
+                        relyingPartyContext = relyingPartyContext
                     ).getOrThrow()
                 )
             }

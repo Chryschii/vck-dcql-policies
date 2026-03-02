@@ -10,11 +10,11 @@ import at.asitplus.jsonpath.core.NormalizedJsonPath
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLQueryResult
 import at.asitplus.signum.indispensable.josef.JwsSigned
-import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyFilter
 import at.asitplus.wallet.lib.data.ConstantIndex
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
 import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.RelyingPartyContext
 import at.asitplus.wallet.lib.data.VerifiableCredentialJws
 import at.asitplus.wallet.lib.jws.SdJwtSigned
 
@@ -69,6 +69,7 @@ interface Holder {
     suspend fun createPresentation(
         request: PresentationRequestParameters,
         credentialPresentation: CredentialPresentation,
+        relyingPartyContext: RelyingPartyContext? = null,
     ): KmmResult<PresentationResponseParameters>
 
     /**
@@ -119,13 +120,16 @@ interface Holder {
      * Creates a mapping from the dcql credential query identifiers of the dcql query to matching
      * credentials and the claims credential set queries to be satisfied.
      *
-     * @param filterById filter the list of possible credentials by the provided ID
-     * @param disclosurePolicySelectorQuery DCQL query to match against relying party attributes in policies
+     * @param dcqlQuery the query from the verifier's presentation request.
+     * @param filterById filter the list of possible credentials by the provided ID.
+     * @param relyingPartyContext the relying party context built from the incoming request.
+     *        When provided, all embedded disclosure policies are evaluated against it and
+     *        allow/deny rules are enforced. When null, no policy filtering is applied.
      */
     suspend fun matchDCQLQueryAgainstCredentialStore(
         dcqlQuery: DCQLQuery,
         filterById: String? = null,
-        disclosurePolicyFilter: DisclosurePolicyFilter? = null
+        relyingPartyContext: RelyingPartyContext? = null,
     ): KmmResult<DCQLQueryResult<SubjectCredentialStore.StoreEntry>>
 }
 

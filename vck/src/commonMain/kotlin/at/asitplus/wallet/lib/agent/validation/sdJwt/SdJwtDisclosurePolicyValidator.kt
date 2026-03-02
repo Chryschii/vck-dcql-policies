@@ -1,61 +1,49 @@
 package at.asitplus.wallet.lib.agent.validation.sdJwt
 
+import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.RelyingPartyContext
 
 /**
- * Validates disclosure policies by matching relying party information against policy filters.
+ * Matches an incoming [RelyingPartyContext] against embedded [DisclosurePolicy] entries
+ * using DCQL, and determines which policies are applicable to the current request.
  */
 object DisclosurePolicyValidator {
 
     /**
-     * Finds the first disclosure policy that matches the provided filter.
-     *
-     * @param policies List of disclosure policies embedded in the credential
-     * @param filter The filter to apply for matching
-     * @return The first matching policy, or null if no policy matches
+     * Runs [relyingPartyQuery] against [relyingPartyContext] and returns true when the query
+     * produces at least one match — meaning this policy is applicable to the current request.
      */
-    fun findMatchingPolicy(
-        policies: List<DisclosurePolicy>?,
-        filter: DisclosurePolicyFilter
-    ): DisclosurePolicy? {
-        if (policies.isNullOrEmpty()) return null
+    private fun matches(
+        relyingPartyQuery: DCQLQuery,
+        relyingPartyContext: RelyingPartyContext,
+    ): Boolean {
+        val result = relyingPartyQuery.execute(
+            availableCredentials = listOf(relyingPartyContext),
+            credentialFormatExtractor = { it.format },
+            mdocCredentialDoctypeExtractor = { "" },
+            sdJwtCredentialTypeExtractor = { it.type },
+            credentialClaimStructureExtractor = { it.claimStructure },
+        ).getOrNull() ?: return false
 
-        val selector = DisclosurePolicySelector(policies)
-        return selector.selectFirst(filter)
+        return result.credentialQueryMatches.values.any { it.isNotEmpty() }
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
     /**
-     * Finds all disclosure policies that match the provided filter.
-     *
-     * @param policies List of disclosure policies embedded in the credential
-     * @param filter The filter to apply for matching
-     * @return List of matching policies (may be empty)
+     * Returns every [DisclosurePolicy] whose [DisclosurePolicy.relyingPartyQuery] matches
+     * the given [relyingPartyContext].
      */
-    fun findMatchingPolicies(
+    fun findApplicablePolicies(
         policies: List<DisclosurePolicy>?,
-        filter: DisclosurePolicyFilter
+        relyingPartyContext: RelyingPartyContext,
     ): List<DisclosurePolicy> {
         if (policies.isNullOrEmpty()) return emptyList()
-
-        val selector = DisclosurePolicySelector(policies)
-        return selector.select(filter)
-    }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /**
-     * Creates a filter for matching policies by client ID.
-     *
-     * @param clientId The client ID to match
-     * @param clientIdKey The metadata field key for client ID (default: "client_id")
-     * @return A filter that matches policies with the specified client ID
-     */
-    fun createClientIdFilter(
-        clientId: String,
-        clientIdKey: String = "client_id"
-    ): DisclosurePolicyFilter {
-        return AttributeValueFilter(clientIdKey, clientId)
+        return policies.filter { policy ->
+            matches(policy.relyingPartyQuery, relyingPartyContext)
+        }
     }
 }

@@ -44,6 +44,7 @@ import at.asitplus.wallet.lib.agent.PresentationResponseParameters.PresentationE
 import at.asitplus.wallet.lib.agent.RandomSource
 import at.asitplus.wallet.lib.cbor.SignCoseDetachedFun
 import at.asitplus.wallet.lib.data.CredentialPresentation
+import at.asitplus.wallet.lib.data.RelyingPartyContext
 import at.asitplus.wallet.lib.jws.SignJwtFun
 import at.asitplus.wallet.lib.oidvci.OAuth2Exception
 import at.asitplus.wallet.lib.oidvci.OAuth2Exception.*
@@ -85,6 +86,7 @@ internal class PresentationFactory(
         val mdocGeneratedNonce = if (responseWillBeEncrypted)
             randomSource.nextBytes(16).encodeToString(Base64UrlStrict)
         else ""
+        val relyingPartyContext = RelyingPartyContext.fromRequest(request)
         val vpRequestParams = PresentationRequestParameters(
             nonce = nonce,
             audience = audience,
@@ -107,6 +109,7 @@ internal class PresentationFactory(
         holder.createPresentation(
             request = vpRequestParams,
             credentialPresentation = credentialPresentation,
+            relyingPartyContext = relyingPartyContext
         ).getOrElse {
             throw AccessDenied("Could not create presentation", it)
         }.also { presentation ->
