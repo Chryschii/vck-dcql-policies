@@ -457,14 +457,16 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
-        // Request given_name - allowed by policy1, so union permits it
+        // Request both claims - allowed separately, so union permits it
         val authnRequest = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
                     RequestOptionsCredential(
                         AtomicAttribute2023,
                         SD_JWT,
-                        setOf(AtomicAttribute2023.CLAIM_GIVEN_NAME)
+                        setOf(
+                            AtomicAttribute2023.CLAIM_GIVEN_NAME,
+                            AtomicAttribute2023.CLAIM_FAMILY_NAME)
                     )
                 ),
                 presentationMechanism = PresentationMechanismEnum.DCQL
@@ -480,6 +482,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val sdJwtResult = result.validationResults.values.single()
             .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
         sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
+        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldNotBeNull()
     }
 
     "Deny policy blocks claim even when allow policy permits it" {
@@ -808,7 +811,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             .reconstructed[AtomicAttribute2023.CLAIM_DATE_OF_BIRTH].shouldNotBeNull()
     }
 
-    "No relying party context bypasses policy enforcement" {
+    "No matching relying party context - no policy enforcement" {
         val holderAgent = HolderAgent(holderKeyMaterial)
         val holderOid4vp = OpenId4VpHolder(
             holder = holderAgent,

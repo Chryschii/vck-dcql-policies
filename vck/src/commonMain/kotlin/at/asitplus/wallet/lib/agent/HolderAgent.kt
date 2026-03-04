@@ -422,7 +422,7 @@ class HolderAgent(
 
                     // Subtract denied claims from allowed; deny takes precedence over allow
                     val effectiveResult = if (deniedResult != null) {
-                        subtractMatchingResults(allowedResult, deniedResult)
+                        computeEffectiveClaimSet(allowedResult, deniedResult)
                     } else {
                         allowedResult
                     } ?: return@mapNotNull null
@@ -575,7 +575,7 @@ class HolderAgent(
      * Subtracts [denied] claims from [allowed].
      * Returns null if the result is empty (all claims were denied).
      */
-    private fun subtractMatchingResults(
+    private fun computeEffectiveClaimSet(
         allowed: DCQLCredentialQueryMatchingResult,
         denied: DCQLCredentialQueryMatchingResult
     ): DCQLCredentialQueryMatchingResult? {
