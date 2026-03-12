@@ -102,10 +102,10 @@ interface SubjectCredentialStore {
             /** Map of serialized disclosure item (as [String]) to parsed item (as [SelectiveDisclosureItem]) */
             @SerialName("disclosures")
             val disclosures: Map<String, SelectiveDisclosureItem?>,
-            @SerialName("schema-uri")
-            override val schemaUri: String,
             @SerialName("disclosure-policies")
             val disclosurePolicies: List<DisclosurePolicy>? = null,
+            @SerialName("schema-uri")
+            override val schemaUri: String,
         ) : StoreEntry {
             override fun getFallbackScheme(): ConstantIndex.CredentialScheme? =
                 SdJwtFallbackCredentialScheme(sdJwt.verifiableCredentialType)
