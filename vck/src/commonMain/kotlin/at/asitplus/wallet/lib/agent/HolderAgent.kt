@@ -11,8 +11,6 @@ import at.asitplus.dif.PresentationSubmissionDescriptor
 import at.asitplus.jsonpath.core.NodeList
 import at.asitplus.jsonpath.core.NormalizedJsonPath
 import at.asitplus.openid.CredentialFormatEnum
-import at.asitplus.openid.dcql.DCQLClaimsQueryResult
-import at.asitplus.openid.dcql.DCQLCredentialQueryMatchingResult
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLQueryResult
 import at.asitplus.signum.indispensable.cosef.CoseKey
@@ -384,9 +382,9 @@ class HolderAgent(
      * Applies all disclosure policies applicable to the given [RelyingPartyContext].
      * For each SD-JWT credential option:
      * - Finds all policies whose [DisclosurePolicy.relyingPartyQuery] matches the context.
-     * - If no policies match, the credential is returned unrestricted.
-     * - Otherwise, computes the union of all [DisclosurePolicy.allowPolicy] results,
-     *   subtracts the union of all [DisclosurePolicy.denyPolicy] results,
+     * - If policies exist but no policies match, the credential option is discarded (fully blocked all claims).
+     * - Otherwise, computes the union of all [DisclosurePolicy.allowQuery] results,
+     *   subtracts the union of all [DisclosurePolicy.denyQuery] results,
      *   and only returns the option if all requested claims survive.
      */
     private fun applyDisclosurePolicies(
@@ -405,39 +403,19 @@ class HolderAgent(
                     )
 
                     if (applicablePolicies.isEmpty()) {
-                        return@mapNotNull option
+                        return@mapNotNull if (credential.disclosurePolicies.isNullOrEmpty()) {
+                            option  // no policies exist at all ==> pass through unrestricted
+                        } else {
+                            null    // policies exist but none apply to this RP ==> block all
+                        }
                     }
 
-                    // Union of all allowPolicy results: a claim is allowed if any policy permits it
-                    val allowedResult = unionAllowedClaims(
+                    // Check whether all requested claims are a subset of the effective claim set
+                    val isRequestValid = DisclosurePolicyValidator.validateRequestedClaims(
                         applicablePolicies = applicablePolicies,
-                        credential = credential,
-                    ) ?: return@mapNotNull null
-
-                    // Union of all denyPolicy results: a claim is denied if any policy denies it
-                    val deniedResult = unionDeniedClaims(
-                        applicablePolicies = applicablePolicies,
-                        credential = credential,
+                        requestedResult = option.matchingResult,
                     )
-
-                    // Subtract denied claims from allowed; deny takes precedence over allow
-                    val effectiveResult = if (deniedResult != null) {
-                        computeEffectiveClaimSet(allowedResult, deniedResult)
-                    } else {
-                        allowedResult
-                    } ?: return@mapNotNull null
-
-                    val isRequestValid = allRequestedClaimsPermitted(
-                        requested = option.matchingResult,
-                        permitted = effectiveResult
-                    )
-                    if (isRequestValid) {
-                        // All requested claims are permitted - return the option as-is
-                        option
-                    } else {
-                        // Not all requested claims are allowed - exclude this credential
-                        null
-                    }
+                    if (isRequestValid) option else null
                 } else {
                     option
                 }
@@ -458,162 +436,6 @@ class HolderAgent(
             credentialQueryMatches = filteredMatches,
             satisfiableCredentialSetQueries = satisfiableSetQueries
         )
-    }
-
-    /**
-     * Computes the union of all [DisclosurePolicy.allowPolicy] results across [applicablePolicies].
-     * A claim is allowed if it is permitted by *any* applicable policy.
-     * Returns null if none of the policies produce a result for the credential.
-     */
-    private fun unionAllowedClaims(
-        applicablePolicies: List<DisclosurePolicy>,
-        credential: StoreEntry.SdJwt
-    ): DCQLCredentialQueryMatchingResult? {
-        var combined: DCQLCredentialQueryMatchingResult? = null
-
-        for (policy in applicablePolicies) {
-            val result = DCQLQueryAdapter(policy.allowPolicy)
-                .select(listOf(credential))
-                .getOrNull()
-                ?.credentialQueryMatches?.values
-                ?.flatten()
-                ?.firstOrNull()
-                ?.matchingResult
-                ?: continue
-
-            combined = if (combined == null) result
-            else unionMatchingResults(combined, result)
-        }
-        return combined
-    }
-
-    /**
-     * Computes the union of all [DisclosurePolicy.denyPolicy] results across [applicablePolicies].
-     * A claim is denied if it appears in *any* applicable deny policy.
-     * Returns null if no applicable policy has a [DisclosurePolicy.denyPolicy].
-     */
-    private fun unionDeniedClaims(
-        applicablePolicies: List<DisclosurePolicy>,
-        credential: StoreEntry.SdJwt
-    ): DCQLCredentialQueryMatchingResult? {
-        var combined: DCQLCredentialQueryMatchingResult? = null
-
-        for (policy in applicablePolicies) {
-            val denyPolicy = policy.denyPolicy ?: continue
-            val result = DCQLQueryAdapter(denyPolicy)
-                .select(listOf(credential))
-                .getOrNull()
-                ?.credentialQueryMatches?.values
-                ?.flatten()
-                ?.firstOrNull()
-                ?.matchingResult
-                ?: continue
-
-            combined = if (combined == null) result
-            else unionMatchingResults(combined, result)
-        }
-        return combined
-    }
-
-    /**
-     * Returns true if every claim in [requested] is present in [permitted].
-     */
-    private fun allRequestedClaimsPermitted(
-        requested: DCQLCredentialQueryMatchingResult,
-        permitted: DCQLCredentialQueryMatchingResult
-    ): Boolean {
-        return when (requested) {
-            // If all claims are requested, check if all are allowed
-            is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> {
-                permitted is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult
-            }
-
-            // If specific claims are requested, check if all are in the allowed set
-            is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
-                when (permitted) {
-                    is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> true
-
-                    is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
-                        requested.claimsQueryResults.all { requestedClaim ->
-                            permitted.claimsQueryResults.any { permittedClaim ->
-                                claimsMatch(requestedClaim, permittedClaim)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Unions two [DCQLCredentialQueryMatchingResult] objects.
-     * [AllClaimsMatchingResult] absorbs any specific set.
-     */
-    private fun unionMatchingResults(
-        first: DCQLCredentialQueryMatchingResult,
-        second: DCQLCredentialQueryMatchingResult
-    ): DCQLCredentialQueryMatchingResult {
-        return when {
-            first is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> first
-
-            second is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> second
-
-            first is DCQLCredentialQueryMatchingResult.ClaimsQueryResults &&
-                    second is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
-                DCQLCredentialQueryMatchingResult.ClaimsQueryResults(
-                    (first.claimsQueryResults + second.claimsQueryResults).distinctBy { claim ->
-                        (claim as? DCQLClaimsQueryResult.JsonResult)?.nodeList?.map { it.toString() }
-                    }
-                )
-            }
-
-            else -> first
-        }
-    }
-
-    /**
-     * Subtracts [denied] claims from [allowed].
-     * Returns null if the result is empty (all claims were denied).
-     */
-    private fun computeEffectiveClaimSet(
-        allowed: DCQLCredentialQueryMatchingResult,
-        denied: DCQLCredentialQueryMatchingResult
-    ): DCQLCredentialQueryMatchingResult? {
-        return when {
-            denied is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> null
-
-            allowed is DCQLCredentialQueryMatchingResult.AllClaimsMatchingResult -> allowed
-
-            allowed is DCQLCredentialQueryMatchingResult.ClaimsQueryResults &&
-                    denied is DCQLCredentialQueryMatchingResult.ClaimsQueryResults -> {
-                val remaining = allowed.claimsQueryResults.filter { allowedClaim ->
-                    denied.claimsQueryResults.none { deniedClaim ->
-                        claimsMatch(allowedClaim, deniedClaim)
-                    }
-                }
-                if (remaining.isEmpty()) null
-                else DCQLCredentialQueryMatchingResult.ClaimsQueryResults(remaining)
-            }
-
-            else -> allowed
-        }
-    }
-
-    /**
-     * Returns true if two [DCQLClaimsQueryResult] instances refer to the same JSON claim path.
-     */
-    private fun claimsMatch(
-        first: DCQLClaimsQueryResult,
-        second: DCQLClaimsQueryResult
-    ): Boolean {
-        if (first !is DCQLClaimsQueryResult.JsonResult) return false
-        if (second !is DCQLClaimsQueryResult.JsonResult) return false
-
-        // Compare paths for SD-JWT
-        return first.nodeList.size == second.nodeList.size &&
-                first.nodeList.zip(second.nodeList).all { (a, b) ->
-                    a.toString() == b.toString()
-                }
     }
 
     private fun PresentationSubmission.Companion.fromMatches(

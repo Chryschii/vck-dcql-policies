@@ -170,7 +170,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy which allows only given_name for this verifier
         val policy = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy"),
@@ -238,7 +238,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Creates two policies for different verifiers and checks if only one gets selected
         val policy1 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier1.example.com"),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -258,7 +258,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val policy2 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier2.example.com"),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -300,7 +300,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 1: allows given_name
         val policy1 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -321,7 +321,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 2: also allows given_name
         val policy2 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -398,7 +398,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 1: allows only given_name
         val policy1 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -419,7 +419,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 2: allows only family_name
         val policy2 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -499,7 +499,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Allow given_name and family_name, but explicitly deny family_name
         val policy = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("allow"),
@@ -518,7 +518,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
                     )
                 )
             ),
-            denyPolicy = DCQLQuery(
+            denyQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("deny"),
@@ -556,7 +556,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
-        // Request family_name - allowed by allowPolicy but denied by denyPolicy
+        // Request family_name - allowed by allowQuery but denied by denyQuery
         val authnRequest = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
@@ -577,7 +577,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
     }
 
-    "No matching policy allows all claims" {
+    "No matching policy denies all claims" {
         val holderAgent = HolderAgent(holderKeyMaterial)
         val holderOid4vp = OpenId4VpHolder(
             holder = holderAgent,
@@ -591,7 +591,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy for a different verifier
         val policy = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://different-verifier.example.com"),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy"),
@@ -646,17 +646,11 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             OpenId4VpVerifier.CreationOptions.Query(walletUrl)
         ).getOrThrow().url
 
+        // No matching policy means fully restricted - no requested claims allowed
         val authnResponse = holderOid4vp.createAuthnResponse(authnRequest).getOrThrow()
             .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
-        val result = verifierOid4vp.validateAuthnResponse(authnResponse.url)
-            .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
-
-        // No matching policy means no restrictions - all requested claims allowed
-        val sdJwtResult = result.validationResults.values.single()
-            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
-
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldNotBeNull()
+        verifierOid4vp.validateAuthnResponse(authnResponse.url)
+            .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
     }
 
     "Three policies with different allow sets - union permits superset" {
@@ -673,7 +667,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 1: allows given_name, family_name, date_of_birth
         val policy1 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy1"),
@@ -700,7 +694,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 2: allows given_name, date_of_birth
         val policy2 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy2"),
@@ -724,7 +718,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy 3: allows only date_of_birth
         val policy3 = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy3"),
@@ -811,7 +805,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             .reconstructed[AtomicAttribute2023.CLAIM_DATE_OF_BIRTH].shouldNotBeNull()
     }
 
-    "No matching relying party context - no policy enforcement" {
+    "No matching relying party context - no policy enforcement but also no claims" {
         val holderAgent = HolderAgent(holderKeyMaterial)
         val holderOid4vp = OpenId4VpHolder(
             holder = holderAgent,
@@ -825,7 +819,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Policy scoped to a completely different verifier — will never match the actual clientId
         val policy = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://unrelated-verifier.example.com"),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("policy"),
@@ -863,7 +857,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         holderAgent.storeCredential(credential.toStoreCredentialInput())
 
-        // Request both claims — no policy matches this verifier, so both must be allowed
+        // Request both claims — no policy matches this verifier, so every claim is blocked
         val authnRequest = verifierOid4vp.createAuthnRequest(
             RequestOptions(
                 credentials = setOf(
@@ -883,14 +877,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val authnResponse = holderOid4vp.createAuthnResponse(authnRequest).getOrThrow()
             .shouldBeInstanceOf<AuthenticationResponseResult.Redirect>()
-        val result = verifierOid4vp.validateAuthnResponse(authnResponse.url)
-            .shouldBeInstanceOf<AuthnResponseResult.VerifiableDCQLPresentationValidationResults>()
-
-        val sdJwtResult = result.validationResults.values.single()
-            .shouldBeInstanceOf<AuthnResponseResult.SuccessSdJwt>()
-
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_GIVEN_NAME].shouldNotBeNull()
-        sdJwtResult.reconstructed[AtomicAttribute2023.CLAIM_FAMILY_NAME].shouldNotBeNull()
+        verifierOid4vp.validateAuthnResponse(authnResponse.url)
+            .shouldBeInstanceOf<AuthnResponseResult.ValidationError>()
     }
 
     "Sector-wide policy and client-specific policy both apply" {
@@ -912,7 +900,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
                     )
                 )
             ),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("sector_allow"),
@@ -932,7 +920,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val clientPolicy = DisclosurePolicy(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://health-app.example.com"),
-            allowPolicy = DCQLQuery(
+            allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
                         id = DCQLCredentialQueryIdentifier("client_allow"),
