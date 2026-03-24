@@ -9,18 +9,18 @@ import at.asitplus.openid.dcql.DCQLCredentialQueryMatchingResult
 import at.asitplus.openid.dcql.DCQLJsonClaimsQuery
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLSdJwtCredentialQuery
-import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.DisclosureDirective
 import at.asitplus.wallet.lib.data.RelyingPartyContext
 
 /**
- * Matches an incoming [RelyingPartyContext] against embedded [DisclosurePolicy] entries
- * using DCQL, and determines which policies are applicable to the current request.
+ * Matches an incoming [RelyingPartyContext] against embedded [DisclosureDirective] entries
+ * using DCQL, and determines which directives are applicable to the current request.
  */
 object DisclosurePolicyValidator {
 
     /**
      * Runs [relyingPartyQuery] against [relyingPartyContext] and returns true when the query
-     * produces at least one match — meaning this policy is applicable to the current request.
+     * produces at least one match — meaning this directive is applicable to the current request.
      */
     private fun matches(
         relyingPartyQuery: DCQLQuery,
@@ -72,10 +72,10 @@ object DisclosurePolicyValidator {
      * Aggregates all unique [DCQLClaimsPathPointer]s from a list of policies.
      */
     private fun unionClaimSets(
-        applicablePolicies: List<DisclosurePolicy>,
-        querySelector: (DisclosurePolicy) -> DCQLQuery?
+        applicableDirectives: List<DisclosureDirective>,
+        querySelector: (DisclosureDirective) -> DCQLQuery?
     ): Set<DCQLClaimsPathPointer> {
-        val claimSets = applicablePolicies
+        val claimSets = applicableDirectives
             .mapNotNull(querySelector)
             .flatMap { query ->
                 query.credentials
@@ -107,28 +107,28 @@ object DisclosurePolicyValidator {
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /**
-     * Returns every [DisclosurePolicy] whose [DisclosurePolicy.relyingPartyQuery] matches
+     * Returns every [DisclosureDirective] whose [DisclosureDirective.relyingPartyQuery] matches
      * the given [relyingPartyContext].
      */
-    fun findApplicablePolicies(
-        policies: List<DisclosurePolicy>?,
+    fun findApplicableDirectives(
+        disclosurePolicy: List<DisclosureDirective>?,
         relyingPartyContext: RelyingPartyContext,
-    ): List<DisclosurePolicy> {
-        if (policies.isNullOrEmpty()) return emptyList()
-        return policies.filter { policy ->
+    ): List<DisclosureDirective> {
+        if (disclosurePolicy.isNullOrEmpty()) return emptyList()
+        return disclosurePolicy.filter { policy ->
             matches(policy.relyingPartyQuery, relyingPartyContext)
         }
     }
 
     /**
-     * Determines if a verifier's request is permitted by a given set of [applicablePolicies].
+     * Determines if a verifier's request is permitted by a given set of [applicableDirectives].
      */
     fun validateRequestedClaims(
-        applicablePolicies: List<DisclosurePolicy>,
+        applicableDirectives: List<DisclosureDirective>,
         requestedResult: DCQLCredentialQueryMatchingResult?
     ): Boolean {
-        val allowedClaims = unionClaimSets(applicablePolicies) { it.allowQuery }
-        val deniedClaims = unionClaimSets(applicablePolicies) { it.denyQuery }
+        val allowedClaims = unionClaimSets(applicableDirectives) { it.allowQuery }
+        val deniedClaims = unionClaimSets(applicableDirectives) { it.denyQuery }
 
         return allRequestedClaimsPermitted(requestedResult, allowedClaims, deniedClaims)
     }

@@ -22,7 +22,7 @@ import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.DisclosureDirective
 import at.asitplus.openid.dcql.DCQLQuery
 import at.asitplus.openid.dcql.DCQLCredentialQueryList
 import at.asitplus.openid.dcql.DCQLSdJwtCredentialQuery
@@ -168,7 +168,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy which allows only given_name for this verifier
-        val policy = DisclosurePolicy(
+        val policy = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -198,7 +198,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         // Add the disclosure policy to the credential
         val credentialWithPolicy = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy)
+                disclosurePolicy = listOf(policy)
             )
             else -> error("Expected VcSd credential")
         }
@@ -236,7 +236,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
     "Policy selection matches correct policy by client_id" {
         // Creates two policies for different verifiers and checks if only one gets selected
-        val policy1 = DisclosurePolicy(
+        val policy1 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier1.example.com"),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -256,7 +256,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             )
         )
 
-        val policy2 = DisclosurePolicy(
+        val policy2 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://verifier2.example.com"),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -280,7 +280,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         val context = RelyingPartyContext.fromRequest(
             AuthenticationRequestParameters(clientId = "https://verifier1.example.com")
         )
-        val matched = DisclosurePolicyValidator.findApplicablePolicies(policies, context)
+        val matched = DisclosurePolicyValidator.findApplicableDirectives(policies, context)
 
         matched.size shouldBe 1
         matched.first() shouldBe policy1
@@ -298,7 +298,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 1: allows given_name
-        val policy1 = DisclosurePolicy(
+        val policy1 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -319,7 +319,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 2: also allows given_name
-        val policy2 = DisclosurePolicy(
+        val policy2 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -347,7 +347,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val credentialWithPolicies = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy1, policy2)
+                disclosurePolicy = listOf(policy1, policy2)
             )
             else -> error("Expected VcSd credential")
         }
@@ -396,7 +396,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 1: allows only given_name
-        val policy1 = DisclosurePolicy(
+        val policy1 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -417,7 +417,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 2: allows only family_name
-        val policy2 = DisclosurePolicy(
+        val policy2 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -445,7 +445,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val credentialWithPolicies = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy1, policy2)
+                disclosurePolicy = listOf(policy1, policy2)
             )
             else -> error("Expected VcSd credential")
         }
@@ -497,7 +497,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Allow given_name and family_name, but explicitly deny family_name
-        val policy = DisclosurePolicy(
+        val policy = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -544,7 +544,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val credentialWithPolicy = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy)
+                disclosurePolicy = listOf(policy)
             )
             else -> error("Expected VcSd credential")
         }
@@ -589,7 +589,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy for a different verifier
-        val policy = DisclosurePolicy(
+        val policy = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://different-verifier.example.com"),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -617,7 +617,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val credentialWithPolicy = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy)
+                disclosurePolicy = listOf(policy)
             )
             else -> error("Expected VcSd credential")
         }
@@ -665,7 +665,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 1: allows given_name, family_name, date_of_birth
-        val policy1 = DisclosurePolicy(
+        val policy1 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -692,7 +692,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 2: allows given_name, date_of_birth
-        val policy2 = DisclosurePolicy(
+        val policy2 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -716,7 +716,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
         )
 
         // Policy 3: allows only date_of_birth
-        val policy3 = DisclosurePolicy(
+        val policy3 = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId(ClientIdScheme.RedirectUri(clientId).clientId),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -744,7 +744,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
 
         val credentialWithPolicies = when (credentialToBeIssued) {
             is CredentialToBeIssued.VcSd -> credentialToBeIssued.copy(
-                disclosurePolicies = listOf(policy1, policy2, policy3)
+                disclosurePolicy = listOf(policy1, policy2, policy3)
             )
             else -> error("Expected VcSd credential")
         }
@@ -806,7 +806,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
     }
 
     "Sector-wide policy and client-specific policy both apply" {
-        val sectorPolicy = DisclosurePolicy(
+        val sectorPolicy = DisclosureDirective(
             relyingPartyQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
                     DCQLSdJwtCredentialQuery(
@@ -842,7 +842,7 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
             )
         )
 
-        val clientPolicy = DisclosurePolicy(
+        val clientPolicy = DisclosureDirective(
             relyingPartyQuery = RelyingPartyQueryBuilder.forClientId("https://health-app.example.com"),
             allowQuery = DCQLQuery(
                 credentials = DCQLCredentialQueryList(
@@ -868,8 +868,8 @@ val OpenId4VpSdJwtProtocolTest by testSuite {
                 "sector" to "health",
             )
         )
-        val matched = DisclosurePolicyValidator.findApplicablePolicies(
-            policies = listOf(sectorPolicy, clientPolicy),
+        val matched = DisclosurePolicyValidator.findApplicableDirectives(
+            disclosurePolicy = listOf(sectorPolicy, clientPolicy),
             relyingPartyContext = relyingPartyContext,
         )
 

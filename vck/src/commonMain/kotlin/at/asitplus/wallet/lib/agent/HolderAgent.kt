@@ -21,7 +21,7 @@ import at.asitplus.wallet.lib.agent.validation.sdJwt.DisclosurePolicyValidator
 import at.asitplus.wallet.lib.data.CredentialPresentation
 import at.asitplus.wallet.lib.data.CredentialPresentationRequest
 import at.asitplus.wallet.lib.data.CredentialToJsonConverter
-import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.DisclosureDirective
 import at.asitplus.wallet.lib.data.KeyBindingJws
 import at.asitplus.wallet.lib.data.RelyingPartyContext
 import at.asitplus.wallet.lib.data.VerifiablePresentationJws
@@ -90,8 +90,7 @@ class HolderAgent(
                     validated.verifiableCredentialSdJwt,
                     credential.vcSdJwt,
                     validated.disclosures,
-                    credential.scheme,
-                    credential.disclosurePolicies,
+                    credential.scheme
                 )
             }
 
@@ -351,7 +350,7 @@ class HolderAgent(
 
     /**
      * Matches a DCQL query against the credential store with optional disclosure policy enforcement.
-     * When a [RelyingPartyContext] is provided, only claims permitted by all applicable policies are returned.
+     * When a [RelyingPartyContext] is provided, only claims permitted by all applicable disclosure directives are returned.
      * If no context is provided, the raw DCQL result is returned without policy enforcement.
      */
     override suspend fun matchDCQLQueryAgainstCredentialStore(
@@ -379,12 +378,12 @@ class HolderAgent(
     }
 
     /**
-     * Applies all disclosure policies applicable to the given [RelyingPartyContext].
+     * Applies all disclosure directives applicable to the given [RelyingPartyContext].
      * For each SD-JWT credential option:
-     * - Finds all policies whose [DisclosurePolicy.relyingPartyQuery] matches the context.
+     * - Finds all policies whose [DisclosureDirective.relyingPartyQuery] matches the context.
      * - If policies exist but no policies match, the credential option is discarded (fully blocked all claims).
-     * - Otherwise, computes the union of all [DisclosurePolicy.allowQuery] results,
-     *   subtracts the union of all [DisclosurePolicy.denyQuery] results,
+     * - Otherwise, computes the union of all [DisclosureDirective.allowQuery] results,
+     *   subtracts the union of all [DisclosureDirective.denyQuery] results,
      *   and only returns the option if all requested claims survive.
      */
     private fun applyDisclosurePolicies(
@@ -396,23 +395,23 @@ class HolderAgent(
                 val credential = option.credential
 
                 if (credential is StoreEntry.SdJwt) {
-                    // Find ALL policies whose relyingPartyQuery matches the current relying party
-                    val applicablePolicies = DisclosurePolicyValidator.findApplicablePolicies(
-                        policies = credential.disclosurePolicies,
+                    // Find ALL directives whose relyingPartyQuery matches the current relying party
+                    val applicableDirectives = DisclosurePolicyValidator.findApplicableDirectives(
+                        disclosurePolicy = credential.sdJwt.disclosurePolicy,
                         relyingPartyContext = relyingPartyContext,
                     )
 
-                    if (applicablePolicies.isEmpty()) {
-                        return@mapNotNull if (credential.disclosurePolicies.isNullOrEmpty()) {
-                            option  // no policies exist at all ==> pass through unrestricted
+                    if (applicableDirectives.isEmpty()) {
+                        return@mapNotNull if (credential.sdJwt.disclosurePolicy.isNullOrEmpty()) {
+                            option  // no directives exist at all ==> pass through unrestricted
                         } else {
-                            null    // policies exist but none apply to this RP ==> block all
+                            null    // directives exist but none apply to this RP ==> block all
                         }
                     }
 
                     // Check whether all requested claims are a subset of the effective claim set
                     val isRequestValid = DisclosurePolicyValidator.validateRequestedClaims(
-                        applicablePolicies = applicablePolicies,
+                        applicableDirectives = applicableDirectives,
                         requestedResult = option.matchingResult,
                     )
                     if (isRequestValid) option else null

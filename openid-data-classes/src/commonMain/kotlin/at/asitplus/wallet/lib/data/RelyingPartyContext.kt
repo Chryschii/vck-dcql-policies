@@ -14,8 +14,8 @@ import kotlinx.serialization.json.put
  * A policy-evaluation-scoped snapshot of a relying party's identity, built from
  * an incoming presentation request.
  *
- * It is constructed at presentation time so that every [DisclosurePolicy.relyingPartyQuery]
- * can be matched against it via DCQL, allowing policies to target specific relying parties,
+ * It is constructed at presentation time so that every [DisclosureDirective.relyingPartyQuery]
+ * can be matched against it via DCQL, allowing directives to target specific relying parties,
  * client ID schemes, or any other combination of relying party attributes.
  */
 data class RelyingPartyContext(

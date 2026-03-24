@@ -5,15 +5,15 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Represents an embedded disclosure policy for a VerifiableCredentialSdJwt.
+ * Represents an embedded disclosure directive for a VerifiableCredentialSdJwt's disclosure policy.
  *
  * When a presentation request arrives, the relying party's attributes are converted into a
- * pseudo-credential. Every [relyingPartyQuery] from every [DisclosurePolicy] embedded in the
- * credential is matched against that pseudo-credential. Policies whose [relyingPartyQuery]
+ * pseudo-credential. Every [relyingPartyQuery] from every [DisclosureDirective] embedded in the
+ * credential is matched against that pseudo-credential. Directives whose [relyingPartyQuery]
  * matches are considered applicable have their [allowQuery] / [denyQuery] rules enforced.
  *
  * @property relyingPartyQuery A DCQL query run against the relying party pseudo-credential to
- *   decide whether this policy applies to the current request. Can be broad (e.g. match an entire
+ *   decide whether this directive applies to the current request. Can be broad (e.g. match an entire
  *   sector) or narrow (e.g. match a single client ID).
  * @property allowQuery A DCQL query specifying which claims MAY be disclosed. Only claims
  *   matched by this query are permitted.
@@ -21,7 +21,7 @@ import kotlinx.serialization.Serializable
  *   if they would otherwise be permitted by an [allowQuery]. Takes precedence over [allowQuery].
  */
 @Serializable
-data class DisclosurePolicy(
+data class DisclosureDirective(
     @SerialName("relying_party_query")
     val relyingPartyQuery: DCQLQuery,
     @SerialName("allow_query")

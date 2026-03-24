@@ -6,7 +6,7 @@ import at.asitplus.signum.indispensable.CryptoPublicKey
 import at.asitplus.signum.indispensable.Digest
 import at.asitplus.wallet.lib.data.ConstantIndex
 import at.asitplus.wallet.lib.data.CredentialSubject
-import at.asitplus.wallet.lib.data.DisclosurePolicy
+import at.asitplus.wallet.lib.data.DisclosureDirective
 import at.asitplus.wallet.lib.jws.JwsHeaderModifierFun
 import kotlin.time.Instant
 
@@ -31,7 +31,7 @@ sealed class CredentialToBeIssued {
         override val subjectPublicKey: CryptoPublicKey,
         override val userInfo: OidcUserInfoExtended,
         /** Implement to add type metadata field */
-        val disclosurePolicies: List<DisclosurePolicy>? = null,
+        val disclosurePolicy: List<DisclosureDirective>? = null,
         val modifyHeader: JwsHeaderModifierFun = JwsHeaderModifierFun { it },
         val sdAlgorithm: Digest = Digest.SHA256
     ) : CredentialToBeIssued()
